@@ -1,46 +1,56 @@
 // == BEGIN IDL ==
 module src.diffusepipe.diagnostics {
 
-    # @depends_on_resource(type="FileSystem", purpose="Reading EXPT and REFL files; Writing log and plot files")
+    # @depends_on_resource(type="FileSystem", purpose="Reading DIALS .expt and .refl files; Writing diagnostic plot files")
+    # @depends_on_resource(type="DIALS/dxtbx", purpose="Parsing .expt for Experiment models and .refl for ReflectionTable")
+    # @depends_on_resource(type="cctbx", purpose="Crystallographic math for q-vector calculations and transformations")
+    # @depends_on_type(src.diffusepipe.types.ComponentInputFiles)
     # @depends_on_type(src.diffusepipe.types.OperationOutcome)
-    # @depends_on_type(src.diffusepipe.types.FileSet)
     interface ConsistencyChecker {
         // Preconditions:
-        // - `input_files.experiment_file` (DIALS .expt) must exist and be readable.
-        // - `input_files.reflection_file` (DIALS .refl) must exist and be readable.
-        // - If `output_plot_directory` is provided, it must be a writable directory path.
+        // - `inputs.dials_expt_path` must point to an existing, readable DIALS experiment list JSON file.
+        // - `inputs.dials_refl_path` must point to an existing, readable DIALS reflection table file.
+        // - If `output_plot_directory` is provided, it must be a path to a writable directory.
         // Postconditions:
-        // - Diagnostic information is printed to standard output (or logged if part of a larger system).
-        // - If plotting is enabled and successful, diagnostic plot files (e.g., q_consistency_check_direct_recalc.png, q_difference_heatmap.png) are saved in `output_plot_directory` (or CWD if not specified).
-        // - Returns an `OperationOutcome` detailing success or failure. `output_artifact_paths` may contain paths to generated plots.
+        // - Diagnostic information comparing q-vectors is printed to standard output (or logged).
+        // - If plotting is enabled (implicitly by this component's nature) and successful, diagnostic plot image files (e.g., "q_consistency_histogram.png", "q_magnitude_scatter.png", "q_difference_heatmap.png") are saved. Paths are reported in `output_artifacts` of the returned `OperationOutcome`.
+        // - The returned `OperationOutcome` object details the success or failure of the consistency check.
         // Behavior:
-        // - Logs verbose output if `verbose_output` is true.
-        // - Loads the experiment list from `input_files.experiment_file`.
-        // - Loads the reflection table from `input_files.reflection_file`.
-        // - Verifies presence of essential columns in the reflection table.
-        // - Selects indexed reflections.
-        // - For each indexed reflection:
-        //   1. Retrieves its Miller index, panel ID, and calibrated coordinates (xyzcal.mm).
-        //   2. Calculates `q_bragg` using the crystal model (A-matrix and Miller index).
-        //   3. Converts `xyzcal.mm` to pixel coordinates (fast_px, slow_px). If this fails, attempts to use `xyzobs.px.value`.
-        //   4. Recalculates `q_pixel_recalculated` directly from the pixel coordinates, beam model, and panel model.
-        //   5. Calculates the difference vector `q_bragg - q_pixel_recalculated` and its magnitude.
-        //   6. Optionally, calculates `q_pred_dials = s1_vec - s0_vec` from the reflection table and compares it with `q_pixel_recalculated`.
-        // - Aggregates statistics on the differences (mean, median, stddev, min, max).
-        // - Prints a summary of these statistics.
-        // - If plotting is enabled (implicitly, as this script often generates plots):
-        //   a. Generates a histogram of q-vector difference magnitudes.
-        //   b. Generates a scatter plot comparing |q_bragg| vs |q_pixel_recalculated|.
-        //   c. Generates a heatmap of q-vector differences on the detector plane.
-        //   d. Saves plots to `output_plot_directory` or current working directory.
-        // @raises_error(condition="InputFileMissing", description="The .expt or .refl file was not found or is unreadable.")
-        // @raises_error(condition="DIALSDataError", description="Error parsing DIALS files or essential data columns are missing.")
-        // @raises_error(condition="PlotGenerationError", description="An error occurred while generating diagnostic plots (e.g., matplotlib not found or plotting failed).")
-        // @raises_error(condition="FileSystemError", description="Cannot write plot files to the specified directory.")
+        // 1. Logs verbose messages if `verbose` is true.
+        // 2. Loads the `ExperimentList` from `inputs.dials_expt_path` using dxtbx.
+        // 3. Loads the `ReflectionTable` from `inputs.dials_refl_path` using DIALS/cctbx tools.
+        // 4. Verifies that essential columns (e.g., 'miller_index', 'id', 'panel', 'xyzcal.mm', 's1') are present in the reflection table. If not, returns "FAILURE".
+        // 5. Filters for indexed reflections (e.g., using `flags.indexed`). If none, returns "WARNING" or "FAILURE".
+        // 6. For each selected indexed reflection:
+        //    a. Retrieves its `miller_index (hkl)`, `panel_id`, `id` (experiment_id), `xyzcal.mm`, and `s1` vector.
+        //    b. Gets the corresponding `Experiment` object from the `ExperimentList` using `experiment_id`.
+        //    c. **Calculate q_bragg:** Using the `Experiment.crystal` model (specifically `crystal.get_A()`, the Busing-Levy matrix) and the `hkl`, compute $\mathbf{q}_{Bragg} = \mathbf{A} \cdot \mathbf{hkl}$.
+        //    d. **Calculate q_pixel_recalculated:**
+        //       i. Get the specific `Panel` object from `Experiment.detector[panel_id]`.
+        //       ii. Convert `xyzcal.mm` (calibrated centroid in mm) to pixel coordinates (fast_px, slow_px) using `Panel.millimeter_to_pixel()`.
+        //       iii. If conversion fails (e.g., centroid outside panel), attempt to use `xyzobs.px.value` from the reflection table as fallback pixel coordinates. If neither is available, skip this reflection.
+        //       iv. Get the laboratory coordinates of this pixel center using `Panel.get_pixel_lab_coord((fast_px, slow_px))`.
+        //       v. Obtain the incident beam vector $\mathbf{k}_{in}$ from `Experiment.beam.get_s0()` (scaled by $2\pi/\lambda$).
+        //       vi. Calculate the scattered beam vector $\mathbf{k}_{out}$ from the sample origin to the pixel's lab coordinate (normalized and scaled by $2\pi/\lambda$).
+        //       vii. Compute $\mathbf{q}_{pixel\_recalc} = \mathbf{k}_{out} - \mathbf{k}_{in}$.
+        //    e. Store the difference vector $\Delta\mathbf{q} = \mathbf{q}_{Bragg} - \mathbf{q}_{pixel\_recalc}$ and its magnitude.
+        //    f. (Optional) Calculate $\mathbf{q}_{DIALS\_pred} = \mathbf{s1} - \mathbf{s0}$ (where $\mathbf{s0}$ is from `Experiment.beam.get_s0()`) and store difference $\mathbf{q}_{DIALS\_pred} - \mathbf{q}_{pixel\_recalc}$.
+        // 7. Aggregates statistics for all calculated $|\Delta\mathbf{q}|$ values (mean, median, stddev, min, max).
+        // 8. Prints a summary of these statistics. If `verbose` is true, prints details for reflections with large differences.
+        // 9. **Generate Plots:**
+        //    a. Histogram of $|\Delta\mathbf{q}|$ magnitudes.
+        //    b. Scatter plot of $|\mathbf{q}_{Bragg}|$ vs. $|\mathbf{q}_{pixel\_recalc}|$.
+        //    c. Heatmap of $|\Delta\mathbf{q}|$ projected onto the detector plane (using pixel coordinates).
+        //    d. Saves plots to `output_plot_directory` (or CWD if null). Stores paths in `OperationOutcome.output_artifacts`.
+        // 10. Returns `OperationOutcome` with status "SUCCESS" (or "WARNING" if issues like no indexed reflections were found but the script ran).
+        // @raises_error(condition="InputFileError", description="Failure to read or parse the DIALS .expt or .refl file.")
+        // @raises_error(condition="DIALSDataFormatError", description="Essential columns are missing from the reflection table, or DIALS models are incomplete.")
+        // @raises_error(condition="PlottingLibraryError", description="An error occurred during plot generation, possibly due to matplotlib issues or missing dependencies.")
+        // @raises_error(condition="FileSystemError", description="Cannot write plot files to the specified `output_plot_directory`.")
         src.diffusepipe.types.OperationOutcome check_q_consistency(
-            src.diffusepipe.types.FileSet input_files,
-            boolean verbose_output,
-            optional string output_plot_directory // Directory to save plots; defaults to CWD if not provided.
+            src.diffusepipe.types.ComponentInputFiles inputs,
+            boolean verbose,
+            optional string output_plot_directory
         );
     }
 }

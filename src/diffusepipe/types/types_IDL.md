@@ -1,68 +1,128 @@
 // == BEGIN IDL ==
 module src.diffusepipe.types {
 
-    // Configuration for DIALS processing steps
-    struct DIALSProcessingConfig {
-        unit_cell: string; // Example: "27.424,32.134,34.513,88.66,108.46,111.88"
-        space_group: string; // Example: "P1"
-        find_spots_phil_file: string; // Path to spot finding PHIL file
-        refinement_phil_file: optional string; // Path to refinement PHIL file
-        min_spot_size: int; // Minimum spot size for dials.find_spots
+    // Configuration for DIALS command-line execution by the orchestrator
+    // Behavior: Defines parameters passed to DIALS command-line tools.
+    struct DIALSExecutionConfig {
+        // Preconditions: Must be a valid DIALS unit cell string (e.g., "a,b,c,alpha,beta,gamma").
+        unit_cell: string;
+
+        // Preconditions: Must be a valid DIALS space group symbol (e.g., "P1", "P212121").
+        space_group: string;
+
+        // Preconditions: Path to an existing, readable PHIL file for dials.find_spots.
+        find_spots_phil_path: string;
+
+        // Preconditions: Path to an existing, readable PHIL file for dials.refine. If not provided, default DIALS refinement may be used.
+        refinement_phil_path: optional string;
+
+        // Preconditions: Must be a positive integer.
+        min_spot_size: int;
     }
 
-    // Parameters for the data extraction process
-    struct ExtractionParameters {
-        min_res: optional float; // d_max in Angstrom for diffuse data
-        max_res: optional float; // d_min in Angstrom for diffuse data
-        min_intensity: optional float; // Minimum pixel intensity for diffuse data
-        max_intensity: optional float; // Maximum pixel intensity (saturation)
-        gain: float; // Detector gain
-        cell_length_tol: float; // Tolerance for cell length consistency check
-        cell_angle_tol: float; // Tolerance for cell angle consistency check
-        orient_tolerance_deg: float; // Orientation tolerance vs external PDB
-        pixel_step: int; // Step for processing pixels (e.g., 1 for every pixel)
-        lp_correction_enabled: boolean; // Enable/disable Lorentz-Polarization correction
-        subtract_background_value: optional float; // Constant value to subtract from pixels
-        plot_diagnostics: boolean; // Whether to generate diagnostic plots
-        verbose_python: boolean; // Enable verbose output from Python scripts
+    // Parameters for the DataExtractor component
+    // Behavior: Defines all settings controlling the diffuse data extraction process from a single image.
+    struct ExtractionConfig {
+        // Behavior: Low-resolution limit (maximum d-spacing in Angstroms). Data beyond this (smaller |q|) is excluded.
+        min_res: optional float;
+
+        // Behavior: High-resolution limit (minimum d-spacing in Angstroms). Data beyond this (larger |q|) is excluded.
+        max_res: optional float;
+
+        // Behavior: Minimum pixel intensity (after gain, corrections, background subtraction) to be included.
+        min_intensity: optional float;
+
+        // Behavior: Maximum pixel intensity (after gain, corrections, background subtraction) to be included (e.g., to filter saturated pixels).
+        max_intensity: optional float;
+
+        // Preconditions: Must be a positive float.
+        // Behavior: Detector gain factor applied to raw pixel intensities.
+        gain: float;
+
+        // Preconditions: Must be a non-negative float (e.g., 0.01 for 1% tolerance).
+        // Behavior: Fractional tolerance for comparing DIALS-derived cell lengths with an external PDB reference.
+        cell_length_tol: float;
+
+        // Preconditions: Must be a non-negative float (e.g., 0.1 for 0.1 degrees tolerance).
+        // Behavior: Tolerance in degrees for comparing DIALS-derived cell angles with an external PDB reference.
+        cell_angle_tol: float;
+
+        // Preconditions: Must be a non-negative float.
+        // Behavior: Tolerance in degrees for comparing DIALS-derived crystal orientation with an external PDB reference.
+        orient_tolerance_deg: float;
+
+        // Preconditions: Must be a positive integer.
+        // Behavior: Process every Nth pixel (e.g., 1 for all pixels, 2 for every other).
+        pixel_step: int;
+
+        // Behavior: If true, a simplified Lorentz-Polarization correction is applied.
+        lp_correction_enabled: boolean;
+
+        // Behavior: Path to a pre-processed background image/map (e.g., NPZ or image format) to be subtracted pixel-wise.
+        // This takes precedence over `subtract_constant_background_value` if both are provided.
+        subtract_measured_background_path: optional string;
+
+        // Behavior: A constant value to be subtracted from all pixels if `subtract_measured_background_path` is not used.
+        subtract_constant_background_value: optional float;
+
+        // Behavior: If true, diagnostic plots (e.g., q-distribution, intensity histograms) are generated.
+        plot_diagnostics: boolean;
+
+        // Behavior: If true, enables verbose logging output during extraction.
+        verbose: boolean;
     }
 
-    // Overall configuration for the pipeline orchestrator
-    struct PipelineConfig {
-        dials_processing: DIALSProcessingConfig;
-        extraction_params: ExtractionParameters;
-        run_diagnostics: boolean; // Whether to run diagnostic scripts
-        // Note: root_dir, log_summary_path etc. are typically handled by the orchestrator's runtime environment
-        // or could be added here if they are truly configurable aspects of the *pipeline's behavior*
-        // rather than runtime operational details.
+    // Overall pipeline configuration for processing stills
+    // Behavior: Encapsulates all settings for the StillsPipelineOrchestrator.
+    struct StillsPipelineConfig {
+        dials_exec_config: DIALSExecutionConfig;
+        extraction_config: ExtractionConfig;
+        run_consistency_checker: boolean; // If true, ConsistencyChecker is run after successful extraction.
+        run_q_calculator: boolean;      // If true, QValueCalculator is run after successful extraction.
     }
 
-    // Represents a set of related input/output files for a processing step
-    struct FileSet {
-        experiment_file: optional string; // Path to DIALS .expt file
-        reflection_file: optional string; // Path to DIALS .refl file
-        image_file: optional string;      // Path to CBF image file
-        bragg_mask_file: optional string; // Path to Bragg mask pickle file
-        external_pdb_file: optional string; // Path to external PDB file for checks
-    }
+    // Represents a set of related input file paths for a component
+    // Behavior: Standardized way to pass file dependencies to components. Fields are optional to allow flexibility for different components.
+    struct ComponentInputFiles {
+        // Behavior: Path to the primary CBF image file being processed.
+        cbf_image_path: optional string;
 
-    // Outcome of processing a single CBF file through the main pipeline
-    struct ProcessingOutcome {
-        input_file_path: string; // Path to the original CBF file processed
-        status: string; // e.g., "SUCCESS", "DIALS_FAILED", "EXTRACTION_FAILED", "DIAGNOSTICS_WARNED"
-        message: optional string; // Details about success or failure
-        working_directory: string; // Path to the dedicated working directory for this file
-        output_npz_path: optional string; // Path to the generated NPZ file if extraction was successful
-        // Add paths to specific log files if needed, e.g., dials_import_log, extraction_log
+        // Behavior: Path to the DIALS experiment list JSON file (.expt) corresponding to the cbf_image_path.
+        dials_expt_path: optional string;
+
+        // Behavior: Path to the DIALS reflection table file (.refl) corresponding to the cbf_image_path.
+        dials_refl_path: optional string;
+
+        // Behavior: Path to the DIALS-generated Bragg mask pickle file.
+        bragg_mask_path: optional string;
+
+        // Behavior: Path to an external PDB file used for consistency checks (e.g., unit cell, orientation).
+        external_pdb_path: optional string;
     }
 
     // Generic outcome for operations within components
+    // Behavior: Standardized return type for component methods indicating success/failure and providing details.
     struct OperationOutcome {
-        status: string; // e.g., "SUCCESS", "FAILURE"
-        message: optional string; // Informative message
-        error_details: optional map<string, string>; // Structured error information
-        // Can include paths to generated files if applicable, e.g., plot_file_path
-        output_artifact_paths: optional map<string, string>;
+        // Preconditions: Must be one of "SUCCESS", "FAILURE", "WARNING".
+        status: string;
+        message: optional string; // Human-readable message about the outcome.
+        error_code: optional string; // A machine-readable code for specific error types.
+        // Behavior: A map where keys are artifact names (e.g., "npz_file", "consistency_plot") and values are their file paths.
+        output_artifacts: optional map<string, string>;
+    }
+
+    // Outcome for processing a single still image through the main pipeline
+    // Behavior: Summarizes the results of all processing stages for a single input CBF image.
+    struct StillProcessingOutcome {
+        input_cbf_path: string; // Path to the original CBF file.
+        // Preconditions: Must be one of "SUCCESS_ALL", "SUCCESS_DIALS_ONLY", "SUCCESS_EXTRACTION_ONLY", "FAILURE_DIALS", "FAILURE_EXTRACTION", "FAILURE_DIAGNOSTICS".
+        status: string;
+        message: optional string; // Overall message for this image's processing.
+        working_directory: string; // Path to the dedicated working directory.
+        dials_outcome: OperationOutcome; // Outcome of the DIALS processing steps.
+        extraction_outcome: OperationOutcome; // Outcome of the DataExtractor.
+        consistency_outcome: optional OperationOutcome; // Outcome of the ConsistencyChecker, if run.
+        q_calc_outcome: optional OperationOutcome;      // Outcome of the QValueCalculator, if run.
     }
 }
 // == END IDL ==
