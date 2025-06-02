@@ -1,195 +1,227 @@
-**Detailed Plan for Diffuse Scattering Processing**
+# Diffuse Scattering Processing Plan (DIALS-Integrated)
 
 **Nomenclature:**
 
 *   `I_raw(px, py, f)`: Raw intensity at detector pixel `(px, py)` for frame `f`.
 *   `t_exp(f)`: Exposure time for frame `f`.
-*   `DE_w`: `geom.DiffractionExperiment` object for wedge `w`.
-*   `IS_w`: `io.ImageSeries` object for wedge `w`.
-*   `Grid_w`: `grid.Sub3dRef` object for wedge `w`.
-*   `Mask_pixel(px, py)`: Boolean mask for good detector pixels.
-*   `v`: Voxel index in `Grid_w`.
-*   `p`: Detector pixel index.
-*   `s`: Scattering vector magnitude.
+*   `Experiment_dials_w`: DIALS `ExperimentList` object for wedge `w` (from `.expt` file).
+*   `Reflections_dials_w`: DIALS `reflection_table` for wedge `w` (from `.refl` file).
+*   `BraggMask_dials_w(px, py)`: Boolean mask from DIALS (`.pickle` file) for wedge `w`.
+*   `IS_w`: `io.ImageSeries` object for wedge `w` (for accessing raw image data).
+*   `Mask_pixel(px, py)`: Static bad pixel mask (e.g., beamstop, bad pixels).
+*   `v`: Voxel index in a 3D reciprocal space grid (defined in Phase 3).
+*   `p`: Detector pixel index `(px,py)`.
+*   `s`: Scattering vector magnitude `|s|`.
 *   `H,K,L`: Integer Miller indices.
 *   `h,k,l`: Continuous (fractional) Miller indices.
 *   `w`: Wedge index.
-*   `i`: Still/shot index (for potential stills adaptation, but primarily `w` for rotation).
-*   `obs`: Observation index in a combined table.
 
 ---
 
-**Phase 1: Geometry, Grid Definition, and Initial Masking**
+**Phase 1: DIALS-Based Initial Processing & Masking**
+*(This phase replaces original `plan.md` Modules 1.0, 1.1, 1.2)*
 
-**Module 1.0: Experimental Setup Definition**
-*   **Action:** Define/load experimental geometry and image series information for each data wedge.
-*   **Input:** Raw image files, XDS output files (e.g., `XDS.INP`, `INTEGRATE.LP`), or CBF headers.
-*   **Process:**
-    1.  Utilize `+proc/@Batch/xds2geom.m` or `+proc/@Batch/cbf2geom.m`.
-    2.  Parse input files to populate `geom.DiffractionExperiment` objects (`DE_w`) for each wedge `w`, containing:
-        *   `DE_w.Source`: Wavelength `λ`, incident beam direction `s⃗₀`, polarization.
-        *   `DE_w.Spindle`: Rotation axis, starting angle `φ_start`, oscillation per frame `Δφ`.
-        *   `DE_w.Crystal`: Unit cell parameters (`a,b,c,α,β,γ`), space group, initial orientation matrix `U_w`.
-        *   `DE_w.Detector`: Pixel size (`q_x, q_y`), dimensions (`N_px, N_py`), distance `D`, origin (`org_x, org_y`), orientation `E_det`.
-    3.  Define `io.ImageSeries` objects (`IS_w`) for each wedge, linking to raw image files `I_raw(px, py, f)`.
-*   **Output:** `DE_w` (list), `IS_w` (list).
-*   **Consistency Check:** Verify reasonableness of geometric parameters.
+**Module 1.D: DIALS Processing Orchestration (New Module)**
+*   **Action:** Execute DIALS command-line tools for each data wedge `w` to determine geometry, index reflections, and generate Bragg masks.
+*   **Input:**
+    *   Raw image files for wedge `w`.
+    *   DIALS PHIL files (for spot finding, refinement).
+    *   Unit cell parameters, space group.
+*   **Process (Typically orchestrated by a shell script like `src/scripts/process_pipeline.sh` or a Python orchestrator):**
+    1.  `dials.import <image_files_w>`: Generates initial experiment geometry (e.g., `imported.expt`).
+    2.  `dials.find_spots <imported.expt> <find_spots.phil>`: Identifies strong reflections (e.g., `strong.refl`).
+    3.  `dials.index <imported.expt> <strong.refl> unit_cell=... space_group=...`: Determines crystal orientation and indexes reflections (e.g., `indexed_initial.expt`, `indexed_initial.refl`).
+    4.  `dials.refine <indexed_initial.expt> <indexed_initial.refl> <refine_detector.phil>`: Refines experimental geometry and crystal model (e.g., `indexed_refined_detector.expt`, `indexed_refined_detector.refl`).
+    5.  `dials.generate_mask <indexed_refined_detector.expt> <indexed_refined_detector.refl>`: Creates a mask to exclude Bragg peak regions (e.g., `bragg_mask.pickle`).
+*   **Output (for each wedge `w`):**
+    *   `Experiment_dials_w`: Refined DIALS `ExperimentList` object (from `indexed_refined_detector.expt`).
+    *   `Reflections_dials_w`: Refined DIALS `reflection_table` (from `indexed_refined_detector.refl`).
+    *   `BraggMask_dials_w`: Boolean mask for Bragg peaks (from `bragg_mask.pickle`).
+*   **Consistency Check:** Successful completion of all DIALS steps (check logs). Reasonableness of refined geometry and indexing statistics.
 
-**Module 1.1: Pixel Masking**
-*   **Action:** Create a static 2D detector mask.
-*   **Input:** `DE_w.Detector`, `I_raw(px, py, first_frame)`.
+**Module 1.1 (Revised): Static Pixel Masking**
+*   **Action:** Create a static 2D detector mask based on detector properties and known bad regions, independent of diffraction data.
+*   **Input:**
+    *   `Experiment_dials_w.detector` (for detector geometry).
+    *   Optionally, a representative raw image `I_raw(px, py, first_frame)` for dynamic masking (e.g., negative counts).
 *   **Process:**
-    1.  `Mask_static(px,py)`: From detector properties (gaps, edges, e.g., `geom.Pilatus6m.isGapPixel()`).
-    2.  `Mask_beamstop(px,py)`: User-defined or from geometry.
-    3.  `Mask_virtual_corrected(px,py)`: If applicable (e.g., `geom.Pilatus6m.isVirtualPixel()`).
-    4.  `Mask_negative_counts(px,py) = (I_raw(px,py,first_frame) >= 0)`.
+    1.  `Mask_static(px,py)`: From detector properties (e.g., panel gaps, edges).
+    2.  `Mask_beamstop(px,py)`: User-defined or geometrically derived beamstop mask.
+    3.  `Mask_virtual_corrected(px,py)`: Mask for virtual or corrected pixels if applicable to detector type.
+    4.  `Mask_negative_counts(px,py)`: If using a raw image, `(I_raw(px,py,first_frame) >= 0)`.
     5.  `Mask_pixel(px,py) = Mask_static & Mask_beamstop & Mask_virtual_corrected & Mask_negative_counts`.
-*   **Output:** `Mask_pixel(px,py)`.
-*   **Consistency Check:** Visually inspect the mask. Ensure it covers known bad regions without excessively masking good data.
-
-**Module 1.2: Voxel Grid Definition and Statistical Filtering (per wedge `w`)**
-*   **Action:** Define a 3D reciprocal space grid and identify outlier voxels (e.g., Bragg peaks).
-*   **Input:** `DE_w`, `IS_w`, `Mask_pixel`. Options: `s_max`, `ndiv`, `filter_window`, `max_count_hist`.
-*   **Process:**
-    1.  **HKL Prediction:** For each frame `f` in `IS_w`, for each pixel `p=(px,py)`:
-        `(h(p,f), k(p,f), l(p,f)) = DE_w.frame2hkl(f)` (using pixel `p` coords).
-    2.  **Grid Initialization:** Create `Grid_w = grid.Sub3dRef()`:
-        *   `Grid_w.ref`: Set of unique integer `(H,K,L)` covered by `(h(p,f), k(p,f), l(p,f))` within `s_max`.
-        *   `Grid_w.ndiv = [n_h, n_k, n_l]` (from options).
-    3.  **Count Histogramming:** For each voxel `v` in `Grid_w`:
-        *   `idx_voxel(p,f) = Grid_w.hkl2index(h(p,f), k(p,f), l(p,f))` (returns `rowIndex_ref`, `fractionIndex`).
-        *   `CountHist_w(v, C+1) = Σ_{p,f where idx_voxel(p,f)=v AND Mask_pixel(p) AND I_raw(p,f)=C} (1)` for `C ≤ max_count_hist`.
-        *   `Overflow_w(v) = Σ_{p,f where idx_voxel(p,f)=v AND Mask_pixel(p) AND I_raw(p,f)>max_count_hist} (I_raw(p,f))`.
-    4.  **Statistical Filtering (using `proc.Filter`):**
-        *   For each voxel `v`, define `Neighborhood(v)` using `Grid_w.movingWindow(filter_window, v)`.
-        *   `MeanCountRate(v') = (Σ_{C=0}^{max} C * CountHist_w(v',C+1)) / (Σ_{C=0}^{max} CountHist_w(v',C+1))`.
-        *   `Λ_v = WeightedMedian_{v' in Neighborhood(v)} (MeanCountRate(v'))` (weights are total pixels in voxel `v'`).
-        *   `P_poisson(C | Λ_v) = exp(-Λ_v) * Λ_v^C / C!`.
-        *   `P_obs(C | Neighborhood(v)) = (Σ_{v' in Neighborhood(v)} CountHist_w(v',C+1)) / (Σ_{C'} Σ_{v' in Neighborhood(v)} CountHist_w(v',C'+1))`.
-        *   `DKL_v = Σ_C P_obs(C | Neighborhood(v)) * log(P_obs(C | Neighborhood(v)) / P_poisson(C | Λ_v))`.
-        *   Iteratively identify `isOutlier_w(v)` by checking if removing voxel `v` from its neighborhoods reduces the sum of `DKL`s for those neighborhoods.
-    5.  **Voxel Masking:** `Grid_w.voxelMask(v) = isOutlier_w(v) OR (Overflow_w(v) > overflow_threshold)`. (The `negateMask` property of `Grid_w` determines if `true` means include or exclude).
-*   **Output:** `Grid_w` (list, one per wedge, with `voxelMask` populated).
-*   **Consistency Check:** Visualize `Grid_w.voxelMask` in reciprocal space slices. Ensure Bragg peaks are masked. Check fraction of masked voxels.
+*   **Output:** `Mask_pixel(px,py)` (a 2D boolean array).
+*   **Consistency Check:** Visual inspection of `Mask_pixel`. Ensure it covers known bad regions without excessively masking good data.
 
 ---
 
-**Phase 2: Intensity Integration and Correction**
+**Phase 2: Diffuse Intensity Extraction and Pixel-Level Correction**
+*(This phase revises original `plan.md` Modules 2.1, 2.2)*
 
-**Module 2.1: Intensity Integration (per wedge `w`)**
-*   **Action:** Sum raw intensities into voxels, respecting masks.
-*   **Input:** `DE_w`, `IS_w`, `Grid_w`, `Mask_pixel`. Option: `binExcludedVoxels`.
-*   **Process (for each voxel `v` in `Grid_w`):**
-    *   `idx_voxel(p,f)` as in 1.2.3.
-    *   If `NOT Grid_w.voxelMask(v)` (or `Grid_w.voxelMask(v)` if `negateMask` is false):
-        *   `Counts_w(v) = Σ_{p,f where idx_voxel(p,f)=v} (I_raw(p,f) * Mask_pixel(p))`
-        *   `Pixels_w(v) = Σ_{p,f where idx_voxel(p,f)=v} (Mask_pixel(p))`
-        *   `N_frame_w(v) = Σ_{p,f where idx_voxel(p,f)=v} (f * Mask_pixel(p))`
-        *   `iz_avg_w(v) = N_frame_w(v) / Pixels_w(v)`
-    *   If `binExcludedVoxels` and voxel `v` *is* masked by `Grid_w.voxelMask`:
-        *   Similar sums into `CountsExcl_w(v)`, `PixelsExcl_w(v)`, `iz_avg_Excl_w(v)`.
-*   **Output:** `bin_list{w} = table(Counts_w, Pixels_w, iz_avg_w)`, `binExcl_list{w}`.
-*   **Consistency Check:** `Counts_w(v) > 0` only if `Pixels_w(v) > 0`. `iz_avg_w(v)` within frame range of wedge.
+**Module 2.1.D: Pixel-Based Diffuse Data Extraction (New/Replaces original `plan.md` 2.1)**
+*   **Action:** For each wedge `w`, read raw images, apply combined masks (`BraggMask_dials_w` and `Mask_pixel`), calculate q-vector for each unmasked pixel, and extract its raw intensity.
+*   **Input:**
+    *   `Experiment_dials_w` (for geometry).
+    *   `IS_w` (`io.ImageSeries` for accessing raw image data for wedge `w`).
+    *   `BraggMask_dials_w` (from Module 1.D).
+    *   `Mask_pixel` (from Module 1.1).
+*   **Process (for each frame `f` in `IS_w`, for each pixel `p=(px,py)` on each panel):**
+    1.  If `NOT BraggMask_dials_w(p, panel_idx)` AND `Mask_pixel(p, panel_idx)`:
+        a.  `I_raw_pf = I_raw(p,f)` (from `IS_w`).
+        b.  Calculate `q_vector(p,f)`:
+            i.  Get laboratory coordinates of pixel `p` on its panel using `Experiment_dials_w.detector[panel_idx]`.
+            ii. Get incident beam vector `s_incident` from `Experiment_dials_w.beam`.
+            iii.Calculate scattered vector `s_scattered` from sample to pixel.
+            iv. `q_vector(p,f) = s_scattered - s_incident`.
+        c.  Store `(q_vector(p,f), I_raw_pf, frame_index=f, panel_index=panel_idx, pixel_coords=(px,py))`.
+*   **Output (for each wedge `w`):**
+    *   `DiffusePixelList_w`: A list of tuples, where each tuple is `(q_vector, raw_intensity, frame_idx, panel_idx, px, py)` for all selected diffuse pixels in the wedge.
+*   **Consistency Check:** Sanity check on the number of extracted pixels. Visual inspection of q-vector distribution (e.g., as a 2D projection) if feasible.
 
-**Module 2.2: Correction Factor Calculation (per wedge `w`)**
-*   **Action:** Calculate geometric, experimental, and background corrections per pixel, then average per voxel.
-*   **Input:** `DE_w`, `IS_w` (for `t_exp(f)`), `Grid_w`, `Mask_pixel`, `DE_bkg_w`, `IS_bkg_w` (if background run exists).
-*   **Process:**
-    1.  **Per-Pixel Corrections `CF(p)` for detector `p=(px,py)`:**
-        *   `d(p), cosω(p) = geom.Corrections.calcGeometry(DE_w.Detector)`
-        *   `SA(p) = geom.Corrections.solidAngle(DE_w.Detector.qx, DE_w.Detector.qy, d(p), cosω(p))`
-        *   `Pol(p) = geom.Corrections.polarization(DE_w.Source.wavevector, ..., p_frac, pn_vec, x_lab(p), y_lab(p), z_lab(p), d(p))`
-        *   `Eff(p) = geom.Corrections.efficiency(DE_w.Detector.sensorMaterial, ..., cosω(p))`
-        *   `Att(p) = geom.Corrections.attenuation("air", ..., d(p))`
-        *   `d3s_pix(p) = geom.Corrections.d3s(DE_w.Source, DE_w.Detector, DE_w.Spindle)`
-        *   `sx_pix(p), sy_pix(p), sz_pix(p) = DE_w.s()` (scattering vector for pixel `p`)
-        *   `ix_pix(p), iy_pix(p)` (pixel indices themselves)
-    2.  **Background Image (if applicable):**
-        *   `I_bkg_sum_w(p) = Σ_{f_bkg in IS_bkg_w} (I_raw_bkg(p, f_bkg))`
-        *   `t_bkg_total_w = Σ_{f_bkg in IS_bkg_w} (t_exp_bkg(f_bkg))`
-    3.  **Average Corrections per Voxel `v`:**
-        *   `Multiplicity_w(v,p) = proc.Integrate.pixelMultiplicity(Grid_w, ...)`
-        *   `CF_avg_w(v) = [Σ_p (Multiplicity_w(v,p) * CF(p))] / [Σ_p Multiplicity_w(v,p)]` (for SA, Pol, Eff, Att, d3s_pix, sx_pix, sy_pix, sz_pix, ix_pix, iy_pix).
-        *   `dt_w = mean(t_exp(f) for f in IS_w)` (average signal exposure time for wedge).
-        *   `Bkg_avg_counts_w(v) = [Σ_p (Multiplicity_w(v,p) * I_bkg_sum_w(p))] / [Σ_p Multiplicity_w(v,p)]`
-        *   `BkgErr_avg_counts_w(v) = sqrt[Σ_p (Multiplicity_w(v,p)^2 * I_bkg_sum_w(p))] / [Σ_p Multiplicity_w(v,p)]`
-*   **Output:** `corr_list{w}` table of averaged corrections, `dt_w`, `BkgDt_w = t_bkg_total_w`. `corrExcl_list{w}` if applicable.
-*   **Consistency Check:** Correction factor maps should be smooth and physically reasonable.
+**Module 2.2.D: Pixel-Based Correction Factor Application (Revises original `plan.md` 2.2)**
+*   **Action:** Apply geometric, experimental, and background corrections to each extracted diffuse pixel's intensity.
+*   **Input:**
+    *   `Experiment_dials_w` (for geometry, source, spindle information).
+    *   `IS_w` (for `t_exp(f)`).
+    *   `DiffusePixelList_w` (from Module 2.1.D).
+    *   Optionally, background image series `IS_bkg_w` and their exposure times.
+*   **Process (for each entry `(q_vec, I_raw_val, f_idx, panel_idx, px, py)` in `DiffusePixelList_w`):**
+    1.  **Calculate Per-Pixel Corrections `CF(p,f_idx)` for pixel `p=(px,py)` at frame `f_idx`:**
+        *   `d(p), cosω(p)`: Distance and angle from `Experiment_dials_w.detector[panel_idx]` and pixel `(px,py)`.
+        *   `SA(p) = geom.Corrections.solidAngle(Detector, px, py)`
+        *   `Pol(p,f_idx) = geom.Corrections.polarization(Source, Detector, Spindle_at_frame_f_idx, px, py)`
+        *   `Eff(p) = geom.Corrections.efficiency(Detector, px, py)`
+        *   `Att(p) = geom.Corrections.attenuation(Detector, px, py)` (e.g., air path)
+        *   `TotalGeomCorr(p,f_idx) = SA(p) * Pol(p,f_idx) * Eff(p) * Att(p)`
+    2.  **Background Subtraction (if applicable):**
+        *   `I_bkg_pixel_rate(p)`: Pre-calculate average background rate per pixel if background images `IS_bkg_w` are provided.
+            `I_bkg_pixel_rate(p) = (Σ_{f_bkg in IS_bkg_w} I_raw_bkg(p, f_bkg)) / (Σ_{f_bkg in IS_bkg_w} t_exp_bkg(f_bkg))`
+        *   `I_raw_per_sec = I_raw_val / t_exp(f_idx)`
+        *   `I_bkg_subtracted_per_sec = I_raw_per_sec - I_bkg_pixel_rate(p)` (if background is used, else `I_bkg_subtracted_per_sec = I_raw_per_sec`)
+    3.  **Apply Corrections:**
+        *   `I_corrected_pf = I_bkg_subtracted_per_sec / TotalGeomCorr(p,f_idx)`
+    4.  **Error Propagation:**
+        *   `Var_raw = I_raw_val / gain` (Poisson assumption, gain applied)
+        *   `Var_bkg_rate = (Σ_{f_bkg} I_raw_bkg(p,f_bkg)/gain) / (Σ_{f_bkg} t_exp_bkg(f_bkg))^2` (if background used)
+        *   `Var_corrected_pf = (Var_raw / t_exp(f_idx)^2 + Var_bkg_rate) / TotalGeomCorr(p,f_idx)^2`
+        *   `Sigma_corrected_pf = sqrt(Var_corrected_pf)`
+    5.  Update the entry in `DiffusePixelList_w` to store `(q_vec, I_corrected_pf, Sigma_corrected_pf, sx, sy, sz, ix_orig=px, iy_orig=py, iz_frame=f_idx, panel_idx_orig=panel_idx)`.
+        *   `sx, sy, sz` are components of `q_vec`.
+*   **Output (for each wedge `w`):**
+    *   `CorrectedDiffusePixelList_w`: List of tuples `(q_vector, corrected_intensity, corrected_sigma, sx, sy, sz, ix, iy, iz_frame, panel_idx)`.
+*   **Consistency Check:** Corrected intensities should be physically reasonable (e.g., mostly positive). Sigma values should be positive.
 
 ---
 
-**Phase 3: Scaling (Relative and Absolute) and Merging**
+**Phase 3: Voxelization, Scaling (Relative), and Merging**
+*(This phase involves major revisions to original `plan.md` Modules 3.1, 3.2, 3.3)*
 
-**Module 3.1: Initial Export & Per-Voxel Intensity Calculation**
-*   **Action:** Combine integrated counts and corrections.
-*   **Input:** `bin_list`, `corr_list`, `AverageGeometry` (averaged from all `DE_w`).
-*   **Process (for each voxel `v` in wedge `w`):**
-    1.  `TotalGeomCorr_w(v) = SA_avg_w(v) * Pol_avg_w(v) * Eff_avg_w(v) * Att_avg_w(v)`
-    2.  `Rate_signal_w(v) = Counts_w(v) / (Pixels_w(v) * dt_w)`
-    3.  `Rate_bkg_w(v) = Bkg_avg_counts_w(v) / BkgDt_w`
-    4.  `I_obs_w(v) = (Rate_signal_w(v) - Rate_bkg_w(v)) / TotalGeomCorr_w(v)`
-    5.  `Sigma_signal_raw_w(v) = sqrt(Counts_w(v)) / (Pixels_w(v) * dt_w)`
-    6.  `Sigma_bkg_raw_w(v) = BkgErr_avg_counts_w(v) / BkgDt_w`
-    7.  `Sigma_obs_w(v) = sqrt( (Sigma_signal_raw_w(v)/TotalGeomCorr_w(v))^2 + (Sigma_bkg_raw_w(v)/TotalGeomCorr_w(v))^2 )`
-    8.  `Fraction_w(v) = (d3s_avg_w(v) * Pixels_w(v)) / (V_cell_recip / prod(Grid_w.ndiv))`
-    9.  `(H_asu,K_asu,L_asu)_v = AverageCrystal.hkl2asu(H_grid(v), K_grid(v), L_grid(v))`
-    10. `s_mag_v = sqrt(sx_avg_w(v)^2 + sy_avg_w(v)^2 + sz_avg_w(v)^2)`
-    11. `panel_idx_v = AverageDetector.chipIndex(ix_avg_w(v), iy_avg_w(v))`
-*   **Output:** `DiffuseTable_combined` (all `I_obs_w`, `Sigma_obs_w`, and derived coordinates/indices from all wedges). `ScalingModel_initial_list` (one per batch, initialized with default control points).
-*   **Consistency Check:** `I_obs` generally positive. `Sigma_obs` reasonable.
+**Module 3.0.D: Global Voxel Grid Definition (New/Adapted from original `plan.md` 1.2)**
+*   **Action:** Define a common 3D reciprocal space grid for merging diffuse data from all wedges.
+*   **Input:**
+    *   `Experiment_dials_w` (from all wedges, to determine overall HKL range from crystal models).
+    *   Alternatively, `CorrectedDiffusePixelList_w` (from all wedges, to determine q-space coverage).
+    *   Options: `s_max` (maximum scattering vector magnitude), `ndiv` (number of divisions per HKL unit).
+*   **Process:**
+    1.  Determine the overall minimum and maximum `(h,k,l)` ranges covered by all wedges. This can be derived from the `q_vector` components in all `CorrectedDiffusePixelList_w` by transforming them to fractional Miller indices using an average or reference crystal model.
+    2.  Create `GlobalGrid = grid.Sub3dRef()` (or equivalent grid object):
+        *   `GlobalGrid.ref`: Defines the reference unit cell for the grid (e.g., from an average of all `Experiment_dials_w.crystal`).
+        *   `GlobalGrid.hkl_range`: Min/max H, K, L integer indices based on observed range and `s_max`.
+        *   `GlobalGrid.ndiv = [n_h, n_k, n_l]` (subdivisions per unit cell, from options).
+*   **Output:** `GlobalGrid` (a single grid object for the entire dataset).
 
-**Module 3.2: Relative Scaling**
-*   **Action:** Refine `ScalingModel` parameters (`a,b,c,d` control points) for each batch.
-*   **Input:** `DiffuseTable_combined`, `ScalingModel_initial_list`.
-*   **Process (Iterative, using `MultiBatchScaler`):**
-    1.  **Reference:** `I_ref(HKL_asu) = WeightedAvg_obs [I_scaled_obs(HKL_asu)]` (current best merged intensity).
-    2.  **Fit (e.g., for `b` in batch `j`'s `ScalingModel_j`):**
-        Minimize `Σ_obs_in_batch_j [ (I_obs(obs) / (a_j*d_j) - (c_j/b_j + I_ref(HKL_asu_obs))) / (Sigma_obs(obs)/(a_j*d_j)) ]^2 + Regularization(b_j_control_points)`
-        where `a_j,b_j,c_j,d_j` are functions of `(ix,iy,iz,panel,s_mag)` evaluated from `ScalingModel_j`.
+**Module 3.1.D: Binning Corrected Diffuse Pixels into Global Voxel Grid (Replaces original `plan.md` 3.1's voxel-based export)**
+*   **Action:** For each wedge `w`, assign each entry in `CorrectedDiffusePixelList_w` to a voxel in `GlobalGrid`.
+*   **Input:**
+    *   `CorrectedDiffusePixelList_w` (for all wedges).
+    *   `GlobalGrid` (from Module 3.0.D).
+*   **Process (for each entry `(q_vec, I_corr, Sigma_corr, sx, sy, sz, ix, iy, iz_frame, panel_idx)` in each `CorrectedDiffusePixelList_w`):**
+    1.  Transform `q_vec` to fractional Miller indices `(h,k,l)` using `GlobalGrid.ref` crystal model.
+    2.  `voxel_idx = GlobalGrid.hkl2index(h,k,l)` (get the index of the voxel in `GlobalGrid` that `(h,k,l)` falls into).
+    3.  Store the observation: `(voxel_idx, I_corr, Sigma_corr, sx, sy, sz, ix, iy, iz_frame, panel_idx, wedge_idx=w)`.
+*   **Output:**
+    *   `BinnedPixelTable_Global`: A single table or list containing all diffuse observations from all wedges, each associated with a `voxel_idx` in `GlobalGrid`. Each entry is a tuple: `(voxel_idx, I_corr, Sigma_corr, sx, sy, sz, ix_orig, iy_orig, iz_frame, panel_idx_orig, wedge_idx)`.
+    *   `ScalingModel_initial_list`: A list of initial `ScalingModel` objects, one per wedge `w`, with default control points for parameters `a,b,c,d`. (Similar to original `plan.md`).
+*   **Consistency Check:** Ensure `voxel_idx` is valid for `GlobalGrid`.
+
+**Module 3.2.D: Relative Scaling of Binned Observations (Logic similar to original `plan.md` 3.2, but operates on `BinnedPixelTable_Global`)**
+*   **Action:** Iteratively refine `ScalingModel` parameters (`a,b,c,d` control points) for each wedge `w` to bring observations onto a common relative scale.
+*   **Input:**
+    *   `BinnedPixelTable_Global`.
+    *   `ScalingModel_initial_list`.
+*   **Process (Iterative, using a `MultiBatchScaler`-like approach):**
+    1.  **Reference Intensity Calculation:** For each `voxel_idx` in `GlobalGrid`, calculate a reference intensity `I_ref(voxel_idx)`. This is typically the weighted average of all currently scaled observations falling into that voxel:
+        `I_ref(voxel_idx) = Σ_obs_in_voxel ( (I_corr(obs) / Scale_mult(obs) - Offset_add(obs)) * Weight(obs) ) / Σ_obs_in_voxel (Weight(obs))`
+        where `Scale_mult` and `Offset_add` are derived from the *current* `ScalingModel` for the wedge of `obs`, and `Weight(obs) = 1 / Sigma_corr(obs)^2`. This step is iterative as `ScalingModel`s are refined.
+    2.  **Fit ScalingModel Parameters:** For each wedge `j` and its `ScalingModel_j`:
+        Minimize a target function, e.g., for parameter `b` (overall scale vs. frame/`iz`):
+        `χ² = Σ_{obs in wedge j} [ (I_corr(obs) / (a_j*d_j) - (c_j/b_j + I_ref(voxel_idx_obs))) / (Sigma_corr(obs)/(a_j*d_j)) ]^2 + Regularization(b_j_control_points)`
+        The parameters `a_j, b_j, c_j, d_j` are functions (e.g., splines) of observation properties (`ix_orig`, `iy_orig`, `iz_frame`, `panel_idx_orig`, `s_mag` derived from `q_vec`) evaluated from the control points of `ScalingModel_j`.
+        This is done iteratively for all parameters `a,b,c,d` for all wedges until convergence.
 *   **Output:** `ScalingModel_refined_list`.
-*   **Consistency Check:** Convergence of fit. Smoothness and physical plausibility of `a,b,c,d` functions.
+*   **Consistency Check:** Convergence of the fit. Smoothness and physical plausibility of the refined `a,b,c,d` scaling functions. Reduction in residuals.
 
-**Module 3.3: Merging Relatively Scaled Data**
-*   **Action:** Apply refined scales and merge unique `(H_asu,K_asu,L_asu)`.
-*   **Input:** `DiffuseTable_combined`, `ScalingModel_refined_list`.
+**Module 3.3.D: Merging Relatively Scaled Data into Voxels (Logic similar to original `plan.md` 3.3, but uses `BinnedPixelTable_Global`)**
+*   **Action:** Apply the final refined scales from `ScalingModel_refined_list` to all observations in `BinnedPixelTable_Global` and merge them into the `GlobalGrid` voxels.
+*   **Input:**
+    *   `BinnedPixelTable_Global`.
+    *   `ScalingModel_refined_list`.
+    *   `GlobalGrid`.
 *   **Process:**
-    1.  For each `obs` in `DiffuseTable_combined` from batch `j`:
+    1.  For each observation `obs = (voxel_idx, I_corr, Sigma_corr, ... wedge_idx=j)` in `BinnedPixelTable_Global`:
+        *   Retrieve `ScalingModel_j` from `ScalingModel_refined_list`.
+        *   Evaluate `a_j(obs), b_j(obs), c_j(obs), d_j(obs)` based on `obs` properties (ix, iy, iz_frame, panel, s_mag).
         *   `Scale_mult_obs = a_j(obs) * b_j(obs) * d_j(obs)`
         *   `Offset_add_obs = c_j(obs) / b_j(obs)`
-        *   `I_rel_obs = I_obs(obs) / Scale_mult_obs - Offset_add_obs`
-        *   `Sigma_rel_obs = Sigma_obs(obs) / Scale_mult_obs`
-    2.  For each unique `(H_asu,K_asu,L_asu)`:
-        *   `w_rel_obs = 1 / Sigma_rel_obs^2`
-        *   `I_merged_relative(HKL_asu) = Σ(I_rel_obs * w_rel_obs) / Σ(w_rel_obs)`
-        *   `Sigma_merged_relative(HKL_asu) = sqrt(1 / Σ(w_rel_obs))`
-*   **Output:** `hklMerge_relative` table.
-*   **Consistency Check:** R-merge statistics. Distribution of residuals `(I_rel_obs - I_merged_relative) / Sigma_rel_obs`.
+        *   `I_rel_obs = I_corr(obs) / Scale_mult_obs - Offset_add_obs`
+        *   `Sigma_rel_obs = Sigma_corr(obs) / Scale_mult_obs` (error propagation)
+        *   Store `(voxel_idx, I_rel_obs, Sigma_rel_obs, sx, sy, sz)` for merging.
+    2.  For each unique `voxel_idx` in `GlobalGrid`:
+        *   Collect all `(I_rel_obs, Sigma_rel_obs, sx, sy, sz)` that map to this `voxel_idx`.
+        *   `w_rel_obs = 1 / Sigma_rel_obs^2` (weight for each observation).
+        *   `I_merged_relative(voxel_idx) = Σ(I_rel_obs * w_rel_obs) / Σ(w_rel_obs)`
+        *   `Sigma_merged_relative(voxel_idx) = sqrt(1 / Σ(w_rel_obs))`
+        *   `sx_avg(voxel_idx) = Σ(sx * w_rel_obs) / Σ(w_rel_obs)` (similarly for `sy`, `sz`).
+        *   `s_mag_center(voxel_idx) = sqrt(sx_avg^2 + sy_avg^2 + sz_avg^2)`.
+        *   `(H_center, K_center, L_center)_voxel = GlobalGrid.index2hkl(voxel_idx)` (center HKL of the voxel).
+*   **Output:**
+    *   `VoxelData_relative`: A table or array containing, for each populated voxel in `GlobalGrid`: `(voxel_idx, H_center, K_center, L_center, s_mag_center, I_merged_relative, Sigma_merged_relative, num_observations_in_voxel)`.
+*   **Consistency Check:** R-merge statistics. Distribution of residuals `(I_rel_obs - I_merged_relative(voxel_idx_obs)) / Sigma_rel_obs`. Smoothness of the merged map.
 
 ---
 
 **Phase 4: Absolute Scaling**
+*(This phase is largely unchanged in logic from original `plan.md` Module 4.1, but operates on `VoxelData_relative` and uses Bragg data from DIALS)*
 
-**Module 4.1: Absolute Scaling and Incoherent Subtraction**
-*   **Action:** Convert to absolute units and subtract Compton scattering.
-*   **Input:** `hklMerge_relative`, `unitCellInventory` (`Molecules`, `occupancies`, `Crystal`), `braggTable_relative` (if available).
+**Module 4.1.D: Absolute Scaling and Incoherent Subtraction**
+*   **Action:** Convert the relatively scaled merged diffuse map (`VoxelData_relative`) to absolute units and subtract theoretical incoherent (Compton) scattering.
+*   **Input:**
+    *   `VoxelData_relative` (from Module 3.3.D).
+    *   `unitCellInventory`: Details of atomic composition of the unit cell (e.g., list of `Molecules`, `occupancies`).
+    *   `Crystal`: Average crystal model (e.g., from an average of all `Experiment_dials_w.crystal`).
+    *   `Reflections_dials_w` (all wedges): Used to create a merged, relatively scaled Bragg intensity list `I_bragg_relative(HKL_asu, s_mag)`. This requires applying the same relative scaling models (`ScalingModel_refined_list`) to the integrated Bragg intensities from DIALS.
 *   **Process:**
-    1.  **Theoretical Scattering (for `s` values corresponding to radial shells):**
-        *   `f_0_atom(s,Z)` from `model.atom.ScatteringFactor`.
-        *   `I_incoh_atomic(s,Z)` from `model.atom.ScatteringFactor`.
-        *   `I_coh_UC(s) = Σ_atoms (occ * f_0_atom^2)`
-        *   `I_incoh_UC_theo(s) = Σ_atoms (occ * I_incoh_atomic)`
-        *   `N_elec_UC = Σ_atoms (occ * Z)`
-    2.  **Radial Averaging (using `StatisticsVsRadius`):**
-        *   `I_obs_total_avg(s_shell) = RadiallyAvg(I_merged_relative + I_bragg_relative)`
-        *   `I_theo_total_avg(s_shell) = RadiallyAvg(I_coh_UC(s) + I_incoh_UC_theo(s))`
-    3.  **Absolute Scale Factor:**
+    1.  **Theoretical Scattering Calculation (for various `s` values corresponding to radial shells):**
+        *   `f_0_atom(s,Z)`: Atomic coherent scattering factor (from `model.atom.ScatteringFactor`).
+        *   `I_incoh_atomic(s,Z)`: Atomic incoherent scattering intensity (from `model.atom.ScatteringFactor`).
+        *   `I_coh_UC_theo(s) = Σ_atoms_in_UC (occupancy_atom * f_0_atom(s, Z_atom)^2)`
+        *   `I_incoh_UC_theo(s) = Σ_atoms_in_UC (occupancy_atom * I_incoh_atomic(s, Z_atom))`
+        *   `N_elec_UC = Σ_atoms_in_UC (occupancy_atom * Z_atom)`
+    2.  **Radial Averaging (using a `StatisticsVsRadius`-like utility):**
+        *   `I_obs_total_avg(s_shell) = RadiallyAvg(I_merged_relative(from_VoxelData_relative) + I_bragg_relative(from_Reflections_dials))`
+        *   `I_theo_total_avg(s_shell) = RadiallyAvg(I_coh_UC_theo(s) + I_incoh_UC_theo(s))`
+    3.  **Determine Absolute Scale Factor `Scale_Abs`:**
         *   `V_cell = Crystal.UnitCell.vCell`
-        *   `Cumul_I_obs(s_cut) = V_cell * Integral_0^s_cut (I_obs_total_avg(s) * 4πs^2 ds)`
-        *   `Cumul_I_theo(s_cut) = -N_elec_UC^2 + V_cell * Integral_0^s_cut (I_theo_total_avg(s) * 4πs^2 ds)`
-        *   `Scale_Abs = Cumul_I_theo(scutoff) / Cumul_I_obs(scutoff)`
-    4.  **Final Diffuse Map (for each `HKL_asu` in `hklMerge_relative`):**
-        *   `I_abs_diffuse(HKL_asu) = I_merged_relative(HKL_asu) * Scale_Abs - I_incoh_UC_theo(s_at_HKL_asu)`
-        *   `Sigma_abs_diffuse(HKL_asu) = Sigma_merged_relative(HKL_asu) * Scale_Abs`
-*   **Output:** `hklMerge_absolute` (final diffuse map data). `ScalingModel_final_list` (updated with `Scale_Abs`).
-*   **Consistency Check:** `Scale_Abs` should be a reasonable positive number. `I_abs_diffuse` should be largely positive. Wilson plot of `I_abs_diffuse` might be inspected.
+        *   `Cumul_I_obs(s_cutoff) = V_cell * Integral_0^s_cutoff (I_obs_total_avg(s) * 4πs^2 ds)`
+        *   `Cumul_I_theo(s_cutoff) = -N_elec_UC^2 + V_cell * Integral_0^s_cutoff (I_theo_total_avg(s) * 4πs^2 ds)` (includes forward scattering term)
+        *   `Scale_Abs = Cumul_I_theo(s_cutoff) / Cumul_I_obs(s_cutoff)` (for a chosen `s_cutoff`).
+    4.  **Apply Absolute Scale and Subtract Incoherent Scattering (to each entry in `VoxelData_relative`):**
+        *   For each voxel `v` with `s_mag_center(v)`:
+            *   `I_abs_diffuse(v) = I_merged_relative(v) * Scale_Abs - I_incoh_UC_theo(s_mag_center(v))`
+            *   `Sigma_abs_diffuse(v) = Sigma_merged_relative(v) * Scale_Abs` (error propagation)
+*   **Output:**
+    *   `VoxelData_absolute`: The final diffuse map data, typically `(voxel_idx, H_center, K_center, L_center, s_mag_center, I_abs_diffuse, Sigma_abs_diffuse)`.
+    *   `ScalingModel_final_list`: The `ScalingModel_refined_list` where parameters `b` and `c` are adjusted by `Scale_Abs` and `I_incoh_UC_theo` respectively, for consistency.
+*   **Consistency Check:** `Scale_Abs` should be a reasonable positive number. `I_abs_diffuse` should be largely positive. Wilson plot of `I_abs_diffuse` (or `I_merged_relative * Scale_Abs`) vs `s` should align with `I_coh_UC_theo(s)` at high `s` after accounting for `I_incoh_UC_theo`.
 
+---
