@@ -30,6 +30,10 @@
 *   **0.3 Test Data Management:** All test input files (curated CBFs, serialized DIALS outputs, reference outputs, tiny image stubs) will be stored in a dedicated directory within the test suite (e.g., `tests/data/`).
 *   **0.4 Verification:** Assertions will check the correctness of calculations, data transformations, and the structure/content of output data structures against pre-calculated expected values or known properties. For modules producing file outputs, tests may compare against reference output files or check key statistics.
 *   **0.5 Scope:** Testing will focus on the logic implemented within this project. The internal correctness of external tools like DIALS is assumed, but their integration and invocation by this project (via the adapter layer) will be tested.
+*   **0.7 Correction-factor Sign Convention (NEW):**  
+    *   **All per-pixel corrections are expressed as *multiplicative* factors**.  
+    *   Any divisor returned by an external API (e.g., `Corrections.lp()`) is **immediately inverted** once and stored as a multiplier.  
+    *   A helper in `diffusepipe.corrections` (`apply_corrections(raw_I, lp_mult, qe_mult, sa_mult, air_mult)`) centralises this logic and is covered by a regression test using an analytic pixel at 45 °.  The rest of the plan therefore speaks only of multipliers.
 *   **0.6 Adapter Layer:** External DIALS/CCTBX/DXTBX Python API calls (e.g., to `dials.stills_process` Python components, scaling framework components, CCTBX utilities) **shall be wrapped** in a thin, project-specific adapter layer residing within the `diffusepipe` package. This adapter layer will be unit-tested against expected behavior based on DIALS/CCTBX documentation and observed outputs, and the main pipeline logic will call these adapters. This localizes changes if the external API evolves and simplifies mocking for higher-level tests.
 
 ---
@@ -197,7 +201,8 @@ Initially, these QC reports (plots and text summaries saved to the output direct
         *   **Custom Corrections (Not Available from DIALS Corrections for Arbitrary Diffuse Pixels):**
             *   **Solid Angle Correction:** The plan must retain a custom (but carefully validated) calculation for `SolidAngle_divisor(p)` based on `Experiment_dials_i.detector[panel_idx]` geometry and pixel coordinates, since diffuse pixels are not necessarily at Bragg positions where DIALS corrections are typically applied. Convert to multiplier: `SA_mult(p) = 1.0 / SolidAngle_divisor(p)`.
             *   **Air Attenuation Correction:** Retain a custom calculation for `AirAttenuation_divisor(p)` based on path length from sample to pixel and X-ray wavelength. Convert to multiplier: `Air_mult(p) = 1.0 / AirAttenuation_divisor(p)`.
-        *   **Final Assembly:** `TotalCorrection_mult(p) = LP_mult(p) * QE_mult(p) * SA_mult(p) * Air_mult(p)`.
+        *   **Final Assembly:** `TotalCorrection_mult(p) = LP_mult(p) × QE_mult(p) × SA_mult(p) × Air_mult(p)`.  
+          All four terms are already in multiplier form because of rule 0.7.
         *   **Regression Test Requirement:** A regression test must be implemented that, for a synthetic experiment and a few selected pixel positions (including off-Bragg positions), compares the individual `LP_divisor` and `QE_multiplier` values obtained from the DIALS `Corrections` adapter against trusted reference values or a separate, careful analytic calculation for those specific points. The custom Solid Angle and Air Attenuation calculations must also have dedicated unit tests with known geometric configurations.
     2.  **Background Subtraction:**
         *   If a background map relevant to still `i` is provided: Load map, retrieve value `I_bkg_map(p)` for the current pixel, and subtract it from `I_raw_val`. The variance of the background map value `Var_bkg(p)` must also be retrieved.
@@ -221,7 +226,7 @@ Initially, these QC reports (plots and text summaries saved to the output direct
     *   **Input:** Sample `RawDiffusePixelList_i`, a corresponding `Experiment_dials_i` object, exposure time, gain, and configurations for all corrections and filters.
     *   **Execution:** Call the Python function(s) implementing this correction module.
     *   **Verification:** Assert that `I_corrected` and `Sigma_corrected` in `CorrectedDiffusePixelList_i` match expected values based on known correction formulas and inputs. Verify adherence to the "all multipliers" convention for corrections. Test filter logic.
-    *   **DIALS Corrections Regression Test:** For a synthetic experiment with known geometry and a few selected pixel positions (including off-Bragg positions), compare the individual `LP_divisor` and `QE_multiplier` values obtained from the DIALS `Corrections` adapter against trusted reference values or a separate, careful analytic calculation for those specific points. This ensures the adapter correctly interfaces with the DIALS API.
+    *   **DIALS Corrections Regression Test:** For a synthetic experiment, verify that `apply_corrections()` recovers the analytic intensity of a 45 ° pixel to <1 % once LP has been inverted.
     *   **Custom Corrections Unit Tests:** The custom Solid Angle and Air Attenuation calculations must have dedicated unit tests with known geometric configurations and expected theoretical values.
     *   **Validation Test for Combined Corrections:** Include a specific unit test that provides synthetic pixel data with known, simple geometric properties. This test should calculate `TotalCorrection_mult(p)` using the implemented logic (including calls to adapters for DIALS corrections and custom calculations) and assert that the final combined multiplicative factor matches a pre-calculated, theoretically correct value. This validates both the individual correction factor calculations/conversions and their final combination.
 
@@ -267,7 +272,9 @@ This array-centric approach is critical for achieving acceptable performance and
     *   A collection of all `CorrectedDiffusePixelList_i` (from Phase 2) to determine the overall q-space coverage and thus the HKL range.
     *   Configuration parameters for the grid: target resolution limits (`d_min_target`, `d_max_target`), number of divisions per reciprocal lattice unit (e.g., `ndiv_h, ndiv_k, ndiv_l`), and optionally a specific reference unit cell if not averaging.
 *   **Process:**
-    1.  Determine an average reference crystal model (`Crystal_avg_ref`) from all `Crystal_i` models.
+    1.  Determine an average reference crystal model (`Crystal_avg_ref`) from all `Crystal_i` models.  
+       After averaging, compute the rms Δhkl for a sample of Bragg reflections transformed with `A_ref⁻¹`.  
+       *If rms Δhkl > 0.1* the per-still orientation matrix `U_i` is used to pre-rotate each `q_vec` before the common transform (see Module 3.S.2).
         This involves:
         a.  **Average Unit Cell (`UC_avg`):** Robustly average all `Crystal_i.get_unit_cell()` parameters using CCTBX utilities to obtain `UC_avg`. This defines the reciprocal metric tensor `B_avg_ref = (UC_avg.fractionalization_matrix())^-T`.
         b.  **Average Orientation Matrix (`U_avg_ref`):** Extract `U_i = Crystal_i.get_U()` for each still. Average these `U_i` matrices using a robust method suitable for rotation matrices (e.g., conversion to quaternions, averaging, and conversion back to a matrix; or averaging of small rotation vectors if deviations are minimal). The chosen method must be documented in the implementation.
@@ -291,9 +298,12 @@ This array-centric approach is critical for achieving acceptable performance and
     *   `GlobalVoxelGrid` (from Module 3.S.1, containing `Crystal_avg_ref`).
     *   Laue group symmetry information (e.g., space group string or `cctbx.sgtbx.space_group` object).
 *   **Process (Memory Management: This process must use streamed voxel accumulation, e.g., Welford's algorithm or similar, to update voxel statistics incrementally without holding all pixel data in memory simultaneously):**
-    1.  Initialize data structures for accumulating per-voxel information (e.g., dictionaries mapping `voxel_idx` to lists of `(I_corr, Sigma_corr, still_id)` tuples, or to running sum/sum_sq/count objects).
+    0.  **Memory forecasting:** Run a quick pass over a 1 % subset of pixels to estimate bytes / pixel.  
+       If the projected full set would exceed 30 % of available RAM, switch automatically to an HDF5-backed chunked store (`VoxelAccumulator`) that streams observations voxel-by-voxel.  
+    1.  Initialise either an in-memory accumulator (small jobs) **or** an on-disk `VoxelAccumulator` (large jobs) that keeps only one voxel’s running stats in RAM at a time.
     2.  For each still `i` and each observation `(q_vec, I_corr, Sigma_corr, ..., still_id)` in its `CorrectedDiffusePixelList_i`:
-        a.  Transform `q_vec` (which is `q_lab_i`, the scattering vector in the lab frame for still `i`) to fractional Miller indices `(h,k,l)_avg_frame` using `(GlobalVoxelGrid.Crystal_avg_ref.get_A())^-1 * q_vec`.
+        a.  Transform `q_vec` to fractional indices:  
+           `hkl_frac = A_ref⁻¹ · (U_iᵀ · q_vec)` **if per-still orientation correction is required** (see test in Module 3.S.1); otherwise omit `U_iᵀ`.
             **Note on Transformation:** This transformation directly maps the lab-frame q-vector from an individual still `i` into the fractional HKL coordinate system defined by the average reference crystal (`Crystal_avg_ref`) and its setting matrix `A_avg_ref`. No intermediate rotation of `q_lab_i` is required before this step when using this direct transformation.
         b.  Map `(h,k,l)` to the asymmetric unit of the specified Laue group using CCTBX symmetry functions (e.g., via an adapter for `space_group.info().map_to_asu()`), obtaining `(h_asu, k_asu, l_asu)`.
         c.  Determine the `voxel_idx` in `GlobalVoxelGrid` corresponding to `(h_asu, k_asu, l_asu)`.
@@ -312,24 +322,24 @@ This array-centric approach is critical for achieving acceptable performance and
     *   `BinnedPixelData_Global` (from Module 3.S.2).
     *   `ScalingModel_initial_list` (from Module 3.S.2).
     *   Configuration for the custom diffuse scaling model. **Note on Iterative Model Development and Configuration:**
-        1.  **Initial Default Model & Configuration:** The `CustomRelativeScalingModel` will be implemented with the capability for several components (e.g., overall per-still scale `b_i`, per-panel correction `d_i(panel)`, resolution-dependent terms, and spatially varying sensitivity `a_i(px,py,p_order(i))`). However, the *initial default configuration* provided to the pipeline (e.g., via `StillsPipelineConfig`) will activate only a **multiplicative-only** subset of these components to avoid parameter correlation issues. **Critical: Multiplicative-Only Initial Model:** The default scaling model will be:
-            *   An overall multiplicative scale factor per still (or group), `b_i` (e.g., using `dials.algorithms.scaling.model.components.scale_components.SingleScaleFactor`).
-            *   Optionally, a 1D resolution-dependent multiplicative scale factor, `a_i(|q|)` (e.g., using a binned parameterization or simple polynomial), applied as a multiplier.
-            *   **All additive offset components** (like `c_i(|q|, p_order(i))` for background) will be **disabled or have their parameters fixed to zero** in the initial refinement stage.
-            Other multiplicative components like `d_i(panel)` would also be initially disabled or have their parameters fixed (not refined).
+        1.  **Initial v1 Model (parameter-guarded):**  
+            *   Exactly **one** free parameter per still: global multiplier `b_i`.  
+            *   Optional **single 1-D resolution smoother** with ≤ 5 control points shared by all stills (`a(|q|)`), enabled only if `enable_res_smoother = True` in config.  
+            *   **Panel, spatial or additive terms are *hard-disabled* in v1.** Attempting to enable them raises a configuration error.  
+            *   A global constant `MAX_FREE_PARAMS = 5 + N_stills` is enforced; CI fails if exceeded.
         2.  **Developer-Led Model Evolution:** The process of adding more complexity to the active scaling model is primarily a developer-led activity during pipeline validation and refinement:
             *   After successfully running and testing the pipeline with the initial simple model, analyze scaling residuals for systematic trends (e.g., versus detector position `px,py`, panel ID, or the still ordering parameter `p_order(i)`).
             *   If significant, smooth, and interpretable trends are observed, the developer will incrementally enable and configure more complex components (e.g., `d_i(panel)` if strong panel-to-panel variations persist; `a_i(px,py,p_order(i))` using `GaussianSmoother2D/3D` if warranted by clear spatial residuals).
             *   Each newly activated component and its parameterization (e.g., number of bins, smoother parameters) must be validated for stability and its impact on improving the fit and data quality.
             *   **Critical for Additive Terms:** Additive offset components (like `c_i(|q|)` for background) should only be introduced after a stable multiplicative scaling solution is achieved, and ideally with strong physical justification or clear evidence from residuals. If both multiplicative and additive terms are refined simultaneously in later iterations, careful attention must be paid to parameter constraints, regularization, and potential correlations, as these terms can trade off leading to non-unique solutions.
-        3.  **User-Facing Configuration:** Future enhancements may expose more granular control over activating these advanced scaling model components to the end-user if they prove robust and generally applicable.
+        3.  **User-Facing Configuration:** The `advanced_components` section is ignored until a residual plot proves need; enabling it requires `--experimental-scale-model` CLI flag.
     *   The implementation will use DIALS components like `dials.algorithms.scaling.model.components.scale_components.ScaleComponentBase`, `SingleScaleFactor`, and `GaussianSmoother1D/2D/3D` as appropriate for the chosen parameterizations.
     *   Definition and source of the still ordering parameter `p_order(i)` must be configurable if components using it (like smoothers dependent on `p_order(i)`) are activated.
-    *   A collection of all `Reflections_dials_i` (from Module 1.S.1), containing `I_bragg_obs_spot` and the `"partiality"` column (`P_spot`), for use in Bragg-based reference generation. **Critical Partiality Handling Strategy:** The `P_spot` values from `dials.stills_process` are often inaccurate by >30% for true stills (as the algorithm was designed with rotation data in mind). Using them as a direct quantitative divisor (`I_obs / P_spot`) will lead to incorrect Bragg intensities, corrupting both relative and absolute scaling. Therefore:
-            1.  **For the initial implementation,** `P_spot` will NOT be used as a quantitative divisor for `I_bragg_obs_spot`.
-            2.  **Threshold-based filtering:** Define a minimum acceptable `P_spot` threshold (e.g., `P_min_thresh = 0.1`). Reflections below this threshold are excluded from Bragg reference generation.
-            3.  **Direct intensity usage:** For reflections with `P_spot >= P_min_thresh`, use the observed intensity `I_bragg_obs_spot` directly in the reference calculation, effectively treating these reflections as "sufficiently recorded." This allows the scaling model to absorb average partiality effects across the dataset.
-            4.  **Validation requirement:** A unit test using synthetic still reflection data with known input intensities and known partialities must be created. This test will verify that this P_spot handling strategy allows the relative scaling model to recover known per-still scale factors to within acceptable tolerance (e.g., <5% error for synthetic data with realistic partiality variations).
+    *   A collection of all `Reflections_dials_i` (from Module 1.S.1), containing `I_bragg_obs_spot` and the `"partiality"` column (`P_spot`), for use in Bragg-based reference generation. **Critical Partiality Handling Strategy:** 
+        *   **Partiality handling strategy (revised):**  
+            *   `P_spot` **is *only* used as a quality flag**.  We keep reflections with `P_spot ≥ P_min_thresh` (default 0.1) but we **never divide by it** at any later stage.  
+            *   Absolute scale will be obtained from Wilson statistics on merged Bragg data rather than from partiality-corrected intensities.  
+            *   Unit tests formerly referring to “divide by P_spot” are removed; new tests assert that intensity values are unchanged after the quality filter.
 *   **Process (Iterative, using a custom `DiffuseScalingModel` class derived from `dials.algorithms.scaling.model.ScalingModelBase` and a custom `DiffuseScalingTarget` function/class):**
     1.  **Parameter Management Setup:** Initialize DIALS's active parameter manager with all refineable parameters from all `ScalingModel_i` components. Set up any restraints (e.g., for smoothness of Gaussian smoother parameters).
     2.  **Iterative Refinement Loop:**
@@ -383,7 +393,7 @@ This array-centric approach is critical for achieving acceptable performance and
     *   `VoxelData_relative` (from Module 3.S.4).
     *   `unitCellInventory`: The complete atomic composition of the unit cell (e.g., a dictionary of element symbols to counts).
     *   `GlobalVoxelGrid.Crystal_avg_ref` (the `dxtbx.model.Crystal` object defining the unit cell and symmetry for theoretical calculations).
-    *   Merged, relatively-scaled Bragg intensities that have also been **corrected for partiality `P_spot`**. This Bragg dataset is derived from all `Reflections_dials_i` (using the `"partiality"` column) and scaled using the `ScalingModel_refined_list` (from Module 3.S.3).
+    *   Merged, relatively-scaled Bragg intensities **with no partiality correction**.  Scale derivation will follow a Wilson-style fit of ⟨|F|²⟩ vs resolution; reflections fail the quality filter if `P_spot < P_min_thresh`.
 *   **Process:**
     1.  **Theoretical Scattering Calculation:**
         *   For each unique element in `unitCellInventory`, obtain its atomic form factor `f0(element, |q|)` and its **full incoherent (Compton) scattering cross-section** `S_incoh(element, |q|)`. This calculation will be performed via an adapter layer for CCTBX scattering utilities. **Note on Q-Range for Incoherent Scattering:** The adapter layer is responsible for ensuring the accuracy of `S_incoh(element, |q|)` across the entire q-range relevant to the diffuse data. This typically involves a hybrid strategy:
@@ -394,9 +404,9 @@ This array-centric approach is critical for achieving acceptable performance and
             *   Calculate `F_calc_sq_voxel = sum_atoms_in_UC (f0(atom, |q|_center)^2)`.
             *   Calculate `I_incoherent_theoretical_voxel = sum_atoms_in_UC (S_incoh(atom, |q|_center))`.
     2.  **Absolute Scale Factor Determination:**
-        *   Determine the absolute scale factor `Scale_Abs` by comparing the partiality-corrected, relatively-scaled experimental Bragg intensities to the calculated `F_calc_sq` values (summed over symmetry equivalents if necessary, or using Wilson statistics if applicable). This may involve fitting over a range of `|q|`.
+        *   Determine the absolute scale factor `Scale_Abs` by fitting the *uncorrected* merged Bragg intensities to Wilson statistics of `F_calc_sq` in resolution shells (Martin & Withers 1982), thereby side-stepping partiality uncertainties.
     3.  **Apply Absolute Scale and Subtract Incoherent Scattering:**
-        *   For each voxel in `VoxelData_relative`:
+        *   For each voxel in `VoxelData_relative` (solid-angle formula cross-validated against DIALS at θ = 0°, 30°, 60°):
             *   `I_abs_diffuse_voxel = VoxelData_relative.I_merged_relative(voxel) * Scale_Abs - I_incoherent_theoretical_voxel`.
             *   `Sigma_abs_diffuse_voxel = VoxelData_relative.Sigma_merged_relative(voxel) * Scale_Abs` (simplification, assumes `Scale_Abs` and `I_incoherent_theoretical_voxel` have negligible uncertainty relative to `Sigma_merged_relative`). This simplification must be documented.
 *   **Output:**
