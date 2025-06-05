@@ -1,23 +1,39 @@
 // == BEGIN IDL ==
 module src.diffusepipe.types {
 
-    // Configuration for DIALS command-line execution by the orchestrator
-    // Behavior: Defines parameters passed to DIALS command-line tools.
-    struct DIALSExecutionConfig {
-        // Preconditions: Must be a valid DIALS unit cell string (e.g., "a,b,c,alpha,beta,gamma").
-        unit_cell: string;
+    // Configuration for DIALS stills_process Python API execution by the orchestrator
+    // Behavior: Defines parameters to configure dials.stills_process.
+    struct DIALSStillsProcessConfig {
+        // Preconditions: Path to an existing, readable PHIL file containing comprehensive
+        // parameters for dials.stills_process. This is the primary way to configure it.
+        stills_process_phil_path: optional string;
 
-        // Preconditions: Must be a valid DIALS space group symbol (e.g., "P1", "P212121").
-        space_group: string;
+        // Behavior: Known unit cell for indexing, e.g., "a,b,c,alpha,beta,gamma".
+        // Overrides or supplements PHIL file if provided.
+        known_unit_cell: optional string;
 
-        // Preconditions: Path to an existing, readable PHIL file for dials.find_spots.
-        find_spots_phil_path: string;
+        // Behavior: Known space group for indexing, e.g., "P1", "C2".
+        // Overrides or supplements PHIL file if provided.
+        known_space_group: optional string;
 
-        // Preconditions: Path to an existing, readable PHIL file for dials.refine. If not provided, default DIALS refinement may be used.
-        refinement_phil_path: optional string;
+        // Behavior: Spot finding algorithm, e.g., "dispersion".
+        // Overrides or supplements PHIL file if provided.
+        spotfinder_threshold_algorithm: optional string;
 
-        // Preconditions: Must be a positive integer.
-        min_spot_size: int;
+        // Behavior: Minimum spot area for spot finding.
+        // Overrides or supplements PHIL file if provided.
+        min_spot_area: optional int;
+
+        // Behavior: If true, ensures shoeboxes are saved by dials.stills_process (needed for some Bragg mask generation methods).
+        // Overrides or supplements PHIL file if provided.
+        output_shoeboxes: optional boolean;
+
+        // Behavior: If true, ensures partialities are calculated and output by dials.stills_process. This is critical.
+        // Overrides or supplements PHIL file if provided.
+        calculate_partiality: optional boolean; // Should default to true in implementation
+
+        // Add other critical, frequently tuned dials.stills_process parameters here as needed.
+        // The adapter layer will be responsible for merging these with the PHIL file content.
     }
 
     // Parameters for the DataExtractor component
@@ -75,7 +91,7 @@ module src.diffusepipe.types {
     // Overall pipeline configuration for processing stills
     // Behavior: Encapsulates all settings for the StillsPipelineOrchestrator.
     struct StillsPipelineConfig {
-        dials_exec_config: DIALSExecutionConfig;
+        dials_stills_process_config: DIALSStillsProcessConfig; // Updated
         extraction_config: ExtractionConfig;
         run_consistency_checker: boolean; // If true, ConsistencyChecker is run after successful extraction.
         run_q_calculator: boolean;      // If true, QValueCalculator is run after successful extraction.

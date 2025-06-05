@@ -95,10 +95,10 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
     *   **Standard:** Use a dedicated manager or bridge class to encapsulate interactions with significant external services.
     *   **Practice:** This manager class handles connection details, API call formatting, and basic response parsing. Other components use this manager rather than interacting directly with the external service's raw API.
     *   **Reference:** See relevant section in `02_IMPLEMENTATION_RULES.md` and project-specific library integration guides (e.g., in `LIBRARY_INTEGRATION/`).
-*   **Integration with DIALS via Command Line:**
-    *   **Standard:** Interaction with DIALS crystallography software is primarily handled through the `process_pipeline.sh` script, which orchestrates DIALS command-line tools.
-    *   **Practice:** The shell script provides consistent parameter passing to DIALS tools and manages workflow orchestration, while Python modules (`extractor.py`, `consistency_checker.py`, etc.) process and analyze DIALS outputs.
-    *   **Configuration:** PHIL files in `src/diffusepipe/config/` provide standardized parameter settings for DIALS tools.
+*   **Integration with DIALS via Python API:**
+    *   **Standard:** Interaction with DIALS crystallography software for initial stills processing (spot finding, indexing, integration) is handled by a Python orchestrator (`StillsPipelineOrchestrator`) which uses the `dials.stills_process` Python API via a dedicated adapter layer.
+    *   **Practice:** The Python orchestrator configures and invokes the `dials.stills_process` adapter. This adapter manages the internal DIALS workflow. Subsequent Python modules (`DataExtractor`, `ConsistencyChecker`, etc.) process and analyze the Python objects (e.g., DIALS `ExperimentList`, `reflection_table`) and files produced by this DIALS processing stage.
+    *   **Configuration:** PHIL files (e.g., in `src/diffusepipe/config/` or specified by the user) provide standardized parameter settings for `dials.stills_process`.
 *   **Host Language Orchestration with DSL/Script Evaluation (if applicable):**
     *   **Concept:** For projects with an embedded Domain-Specific Language (DSL) or scripting capability, use the host language (e.g., Python) for complex data preparation. The DSL/script then focuses on orchestration, referencing data prepared by the host language.
     *   **Practice:** Python code prepares data, creates an environment for the DSL, binds data to variables, and then calls the DSL evaluator.

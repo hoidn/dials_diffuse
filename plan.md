@@ -41,14 +41,14 @@
 *   **Input (per still `i` or a small batch of stills):**
     *   File path(s) to raw still image(s).
     *   Base experimental geometry information (`DE_base`), potentially provided as a reference DIALS `.expt` file or constructed programmatically. This includes common detector and source models.
-    *   Configuration for `dials.stills_process` provided as a PHIL string or Python object. This configuration must ensure:
-        *   Calculation and output of reflection partialities.
+    *   Configuration for `dials.stills_process` (e.g., an instance of `DIALSStillsProcessConfig` from `types_IDL.md`). The adapter layer will translate this into PHIL parameters for `dials.stills_process`. This configuration must ensure:
+        *   Calculation and output of reflection partialities (critical).
         *   Saving of shoeboxes if Option B in Module 1.S.3 (Bragg mask from shoeboxes) is chosen.
         *   Appropriate spot finding, indexing, refinement, and integration strategies for the specific still dataset.
         *   Error handling settings (e.g., `squash_errors = False` for debugging).
-    *   Unit cell parameters and space group information, passed as hints to `dials.stills_process`.
+    *   Known unit cell parameters and space group information can be part of `DIALSStillsProcessConfig` and passed as hints to `dials.stills_process`.
 *   **Process (Orchestrated per still `i` or small batch by the `StillsPipelineOrchestrator` component, which calls the adapter for `dials.stills_process.Processor`):**
-    1.  The adapter initializes a `dials.command_line.stills_process.Processor` instance with the PHIL configuration.
+    1.  The adapter initializes a `dials.command_line.stills_process.Processor` instance. It constructs the necessary PHIL parameters from the input `DIALSStillsProcessConfig` (e.g., by merging a base PHIL file with explicitly provided parameters).
     2.  The adapter calls `dials.command_line.stills_process.do_import()` (or equivalent logic within the `Processor`) using the image file path and base geometry to create an initial `dxtbx.model.experiment_list.ExperimentList` for the still.
     3.  The adapter invokes the main processing method of the `Processor` instance (e.g., `processor.process_experiments()`) on the imported experiment(s). This step internally handles:
         *   Spot finding.
