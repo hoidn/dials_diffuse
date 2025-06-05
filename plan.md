@@ -195,12 +195,20 @@ Initially, these QC reports (plots and text summaries saved to the output direct
         *   All individual correction factors **shall be converted to and combined as multipliers** to form `TotalCorrection_mult(p)`. The adapter layer or calculation logic for each specific correction type is responsible for this conversion.
         *   **DIALS Corrections Object Setup:** For each still `i`, the `DataExtractor` (or its adapter layer) will instantiate a `dials.algorithms.integration.Corrections` object using `Experiment_dials_i.beam`, `Experiment_dials_i.goniometer` (if present), and `Experiment_dials_i.detector`. This object provides robust, well-tested implementations for standard geometric corrections.
         *   **For the array of accepted diffuse pixel observations** (defined by their s1 vectors and panel IDs for still `i`):
-            *   **Lorentz-Polarization (LP) Correction:** `LP_divisors` will be obtained by calling the `lp()` method of the DIALS `Corrections` object. Convert to multiplier: `LP_mult(p) = 1.0 / LP_divisor(p)`.
-            *   **Detector Quantum Efficiency (QE) Correction:** `QE_multipliers` will be obtained by calling the `qe()` method of the DIALS `Corrections` object. Use directly: `QE_mult(p) = QE_multiplier(p)`.
+            *   **Data Preparation for DIALS API:**
+                *   From the `M` accepted diffuse pixel observations for still `i`, extract their calculated `s1` vectors into a `flex.vec3_double` array (`s1_flex_array`) of length `M`.
+                *   Extract their `original_panel_index` values into a `flex.size_t` array (`panel_indices_flex_array`) of length `M`.
+            *   **Lorentz-Polarization (LP) Correction:** `LP_divisors_array = corrections_obj.lp(s1_flex_array)`. Convert to multiplier: `LP_mult_array = 1.0 / LP_divisors_array`.
+            *   **Detector Quantum Efficiency (QE) Correction:** `QE_multipliers_array = corrections_obj.qe(s1_flex_array, panel_indices_flex_array)`. Use directly: `QE_mult_array = QE_multipliers_array`.
+            *   These `LP_mult_array` and `QE_mult_array` are `flex.double` arrays of length `M`, providing the correction factors for each of the `M` diffuse pixels.
             *   **Note:** The DIALS `Corrections` object handles complex effects like parallax internally for LP and QE corrections.
         *   **Custom Corrections (Not Available from DIALS Corrections for Arbitrary Diffuse Pixels):**
             *   **Solid Angle Correction:** The plan must retain a custom (but carefully validated) calculation for `SolidAngle_divisor(p)` based on `Experiment_dials_i.detector[panel_idx]` geometry and pixel coordinates, since diffuse pixels are not necessarily at Bragg positions where DIALS corrections are typically applied. Convert to multiplier: `SA_mult(p) = 1.0 / SolidAngle_divisor(p)`.
-            *   **Air Attenuation Correction:** Retain a custom calculation for `AirAttenuation_divisor(p)` based on path length from sample to pixel and X-ray wavelength. Convert to multiplier: `Air_mult(p) = 1.0 / AirAttenuation_divisor(p)`.
+            *   **Air Attenuation Correction:** A custom calculation for `AirAttenuation_divisor(p)` (subsequently inverted to `Air_mult(p)`) will be implemented. This calculation must:
+                i.  Determine the path length of the X-ray from the sample to the pixel `p`.
+                ii. Use the X-ray wavelength (from `Experiment_dials_i.beam`) to determine the X-ray energy.
+                iii. Calculate the linear attenuation coefficient of air (`μ_air`) at this energy. This **must not** use simple heuristics like λ³ scaling, especially for a wide range of energies. Instead, it should be based on the sum of mass attenuation coefficients for the primary constituents of air (e.g., N, O, Ar) at the given X-ray energy, multiplied by their respective partial densities. Mass attenuation coefficients should be sourced from standard databases (e.g., NIST, or via a library like `xraylib` or `XrayDB` if such a dependency is acceptable, or from pre-tabulated values within the project for key energies if a library is too heavy). The calculation should account for air density based on standard temperature and pressure, or allow these as configurable parameters if significant variations are expected.
+                iv. Apply the Beer-Lambert law: `Attenuation = exp(-μ_air * path_length)`. The `AirAttenuation_divisor(p)` would be this `Attenuation` factor (since intensity is reduced by this factor), and `Air_mult(p) = 1.0 / Attenuation`.
         *   **Final Assembly:** `TotalCorrection_mult(p) = LP_mult(p) × QE_mult(p) × SA_mult(p) × Air_mult(p)`.  
           All four terms are already in multiplier form because of rule 0.7.
         *   **Regression Test Requirement:** A regression test must be implemented that, for a synthetic experiment and a few selected pixel positions (including off-Bragg positions), compares the individual `LP_divisor` and `QE_multiplier` values obtained from the DIALS `Corrections` adapter against trusted reference values or a separate, careful analytic calculation for those specific points. The custom Solid Angle and Air Attenuation calculations must also have dedicated unit tests with known geometric configurations.
@@ -298,18 +306,16 @@ This array-centric approach is critical for achieving acceptable performance and
     *   `GlobalVoxelGrid` (from Module 3.S.1, containing `Crystal_avg_ref`).
     *   Laue group symmetry information (e.g., space group string or `cctbx.sgtbx.space_group` object).
 *   **Process (Memory Management: This process must use streamed voxel accumulation, e.g., Welford's algorithm or similar, to update voxel statistics incrementally without holding all pixel data in memory simultaneously):**
-    0.  **Memory forecasting:** Run a quick pass over a 1 % subset of pixels to estimate bytes / pixel.  
-       If the projected full set would exceed 30 % of available RAM, switch automatically to an HDF5-backed chunked store (`VoxelAccumulator`) that streams observations voxel-by-voxel.  
+    0.  **Initialize `VoxelAccumulator`:** An instance of the `VoxelAccumulator` class (defined with an HDF5 backend using `h5py` and `zstd` compression) is created. This class will manage the storage of all corrected diffuse pixel observations.  
     1.  Initialise either an in-memory accumulator (small jobs) **or** an on-disk `VoxelAccumulator` (large jobs) that keeps only one voxel’s running stats in RAM at a time.
-    2.  For each still `i` and each observation `(q_vec, I_corr, Sigma_corr, ..., still_id)` in its `CorrectedDiffusePixelList_i`:
-        a.  Transform `q_vec` to fractional indices:  
-           `hkl_frac = A_ref⁻¹ · (U_iᵀ · q_vec)` **if per-still orientation correction is required** (see test in Module 3.S.1); otherwise omit `U_iᵀ`.
-            **Note on Transformation:** This transformation directly maps the lab-frame q-vector from an individual still `i` into the fractional HKL coordinate system defined by the average reference crystal (`Crystal_avg_ref`) and its setting matrix `A_avg_ref`. No intermediate rotation of `q_lab_i` is required before this step when using this direct transformation.
+        a.  Transform `q_vec` (which is `q_lab_i`, the lab-frame q-vector for still `i`) to fractional Miller indices `hkl_frac` in the coordinate system of the `GlobalVoxelGrid` (defined by `Crystal_avg_ref` and its setting matrix `A_avg_ref`):
+            `hkl_frac = (A_avg_ref)⁻¹ · q_lab_i`
+            **Note on Transformation:** This direct transformation maps the lab-frame q-vector from an individual still `i` into the fractional HKL coordinate system of the average reference crystal. The `rms Δhkl` check performed in Module 3.S.1 serves as a diagnostic for dataset homogeneity; if high, it indicates potential smearing in the merged map due to crystal variability, but the transformation formula itself remains this direct mapping for the initial pipeline version.
         b.  Map `(h,k,l)` to the asymmetric unit of the specified Laue group using CCTBX symmetry functions (e.g., via an adapter for `space_group.info().map_to_asu()`), obtaining `(h_asu, k_asu, l_asu)`.
         c.  Determine the `voxel_idx` in `GlobalVoxelGrid` corresponding to `(h_asu, k_asu, l_asu)`.
         d.  Update the accumulation data structure for `voxel_idx` with `(I_corr, Sigma_corr, still_id)`. If using Welford's, update mean, M2, and count for that `still_id` within that voxel, or for the voxel globally if scales are to be applied before final merge.
 *   **Output:**
-    *   `BinnedPixelData_Global`: A data structure (e.g., a dictionary mapping `voxel_idx` to a list of `(I_corr, Sigma_corr, still_id)` observations, or to aggregated statistics if full streaming is done). This structure holds all observations grouped by their target voxel in the asymmetric unit.
+    *   The `VoxelAccumulator` instance, now populated with all observations in its HDF5 backend. The `BinnedPixelData_Global` (a dictionary mapping `voxel_idx` to a list of `(I_obs, Sigma_obs, still_id, q_lab_i)` observations) will be retrieved from this accumulator by Module 3.S.3 (Relative Scaling) using a method like `VoxelAccumulator.get_binned_data_for_scaling()`.
     *   `ScalingModel_initial_list`: A list of initial scaling model parameter objects, one for each still `i` (or group of stills if a grouping strategy is employed). Parameters typically initialized to unity scale and zero offset.
 *   **Testing (Module 3.S.2):**
     *   **Input:** A sample `CorrectedDiffusePixelList_i` (with known `q_vector`s and values), a `GlobalVoxelGrid` object, and Laue group information.
@@ -371,7 +377,8 @@ This array-centric approach is critical for achieving acceptable performance and
         a.  Retrieve the refined `ScalingModel_i` (or its components) for the corresponding `still_id`.
         b.  Calculate the total multiplicative scale `M_i` and total additive offset `C_i` for this observation using the refined model parameters and the observation's specific properties (e.g., `|q|`, `px,py`, `panel_idx`, `p_order(i)`).
         c.  Apply the scaling: `I_final_relative = (I_corr - C_i) / M_i`.
-        d.  Propagate uncertainties: `Sigma_final_relative = Sigma_corr / abs(M_i)` (simplification, assuming `M_i` and `C_i` have negligible uncertainty compared to `Sigma_corr`).
+        d.  Propagate uncertainties: `Sigma_final_relative = Sigma_corr / abs(M_i)`.
+            **(Note: This formula is valid for the v1 scaling model where the additive offset `C_i` is zero. If future versions refine `C_i` with non-zero uncertainty `Var(C_i)`, the formula must be updated to `Sigma_final_relative = sqrt(Sigma_corr² + Var_C_i) / abs(M_i)`, requiring `Var(C_i)` to be estimated from the scaling model refinement.)**
     2.  For each `voxel_idx` in `GlobalVoxelGrid`:
         a.  Collect all `I_final_relative` and `Sigma_final_relative` values from observations binned to this `voxel_idx`.
         b.  Perform a weighted merge (typically inverse variance weighting: `weight = 1 / Sigma_final_relative^2`) to calculate `I_merged_relative(voxel_idx)` and `Sigma_merged_relative(voxel_idx)`.
@@ -397,14 +404,16 @@ This array-centric approach is critical for achieving acceptable performance and
 *   **Process:**
     1.  **Theoretical Scattering Calculation:**
         *   For each unique element in `unitCellInventory`, obtain its atomic form factor `f0(element, |q|)` and its **full incoherent (Compton) scattering cross-section** `S_incoh(element, |q|)`. This calculation will be performed via an adapter layer for CCTBX scattering utilities. **Note on Q-Range for Incoherent Scattering:** The adapter layer is responsible for ensuring the accuracy of `S_incoh(element, |q|)` across the entire q-range relevant to the diffuse data. This typically involves a hybrid strategy:
-            1.  Utilize reliable tabulated data from CCTBX (e.g., IT1992 data accessible via `cctbx.eltbx.sasaki.table().incoherent()`) for q-ranges where these tables are accurate and valid (generally up to `|q| \approx 4 Å⁻¹`).
+            1.  Utilize reliable tabulated data from CCTBX (e.g., IT1992 data accessible via `cctbx.eltbx.sasaki.table().incoherent()`) for q-ranges where these tables are accurate and valid (generally up to `sin(θ)/λ \approx 2.0 Å⁻¹` (corresponding to `|q| = 4π sin(θ)/λ \approx 25 Å⁻¹`)).
             2.  For `|q|` values exceeding the valid range of the tabulated data, the adapter must supplement or switch to an appropriate analytical formulation for high-q X-ray incoherent scattering. Priority should be given to using routines from `cctbx.eltbx.formulae` if they provide accurate high-q incoherent cross-sections. If not, the adapter should implement or utilize a well-established formula such as the relativistic Klein-Nishina formula.
             The source (table/formula) and any approximations used for calculating `S_incoh` across different q-ranges must be clearly documented within the adapter's implementation.
         *   For each voxel in `VoxelData_relative` (with its `|q|_center`):
             *   Calculate `F_calc_sq_voxel = sum_atoms_in_UC (f0(atom, |q|_center)^2)`.
             *   Calculate `I_incoherent_theoretical_voxel = sum_atoms_in_UC (S_incoh(atom, |q|_center))`.
-    2.  **Absolute Scale Factor Determination:**
-        *   Determine the absolute scale factor `Scale_Abs` by fitting the *uncorrected* merged Bragg intensities to Wilson statistics of `F_calc_sq` in resolution shells (Martin & Withers 1982), thereby side-stepping partiality uncertainties.
+    2.  **Absolute Scale Factor Determination (`Scale_Abs`):**
+        *   The primary method for determining `Scale_Abs` will be the Krogh-Moe/Norman summation method. This involves scaling the total experimental scattering (radially averaged `I_merged_diffuse_relative` from `VoxelData_relative` + radially averaged `I_bragg_final_relative` (merged Bragg intensities)) to match the theoretical total scattering (`I_coh_UC(s) + I_incoh_UC(s)`).
+        *   The `I_bragg_final_relative` values used in this sum are those obtained after relative scaling (Module 3.S.4 output) and must *not* have been divided by `P_spot` (partiality). They should, however, have passed the `P_spot >= P_min_thresh` quality filter during their initial processing and selection for relative scaling.
+        *   (Optional Diagnostic) A secondary `Scale_Abs_Wilson` can be determined for diagnostic purposes by performing a Wilson plot. For this, a separate set of merged Bragg intensities would be prepared, using `I_bragg_obs_spot / P_spot_corrected` (where `P_spot_corrected` might be clamped or adjusted) and applying a very strict `P_spot` filter (e.g., `P_spot >= 0.9`). This `Scale_Abs_Wilson` is for comparison and validation, not for scaling the diffuse data unless the Krogh-Moe method proves problematic.
     3.  **Apply Absolute Scale and Subtract Incoherent Scattering:**
         *   For each voxel in `VoxelData_relative` (solid-angle formula cross-validated against DIALS at θ = 0°, 30°, 60°):
             *   `I_abs_diffuse_voxel = VoxelData_relative.I_merged_relative(voxel) * Scale_Abs - I_incoherent_theoretical_voxel`.

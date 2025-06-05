@@ -107,9 +107,11 @@ module src.diffusepipe.types {
         resolution_scale_bins: optional int;
 
         // Behavior: If true, refines additive offset components (e.g., background terms).
-        // CRITICAL: This should be false initially to avoid parameter correlation issues.
-        // Only enable after multiplicative model is stable and residuals justify it.
-        refine_additive_offset: boolean; // Should default to false
+        // CRITICAL: This **must** be `false` for the initial v1 implementation to avoid parameter
+        // correlation issues and simplify error propagation. Enabling this requires careful
+        // validation and updates to error propagation logic (see plan.md, Module 3.S.4).
+        // Only enable in future versions after the multiplicative model is stable and residuals clearly justify it.
+        refine_additive_offset: boolean; // Should default to false and be hard-coded to false in v1.
 
         // Behavior: Minimum P_spot threshold for including Bragg reflections in reference generation.
         // Reflections below this threshold are excluded to avoid poor-quality data.
