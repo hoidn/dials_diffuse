@@ -4,15 +4,18 @@
 # External PDB is used ONLY by the Python script for consistency checks.
 # DIALS uses hardcoded unit cell and space group.
 
+# Set ROOT_DIR to the location of this script
+ROOT_DIR=$(pwd)
+
 # --- Configuration ---
 # HARDCODED Unit cell and space group - MUST MATCH THE PDB USED FOR ERYX/CONSISTENCY CHECKS
 UNIT_CELL="27.424,32.134,34.513,88.66,108.46,111.88" # Example for 6o2h.pdb (Triclinic Lysozyme P1)
 SPACE_GROUP="P1"                                     # Example for 6o2h.pdb
 
-# Path to PHIL files (assumed to be in the same directory as this script or CWD)
-FIND_SPOTS_PHIL_FILE="./find_spots.phil"
+# Path to PHIL files
+FIND_SPOTS_PHIL_FILE="$ROOT_DIR/src/diffusepipe/config/find_spots.phil"
 # This PHIL file is used by dials.refine in the "old working" script.
-REFINEMENT_PHIL_FILE="./refine_detector.phil" 
+REFINEMENT_PHIL_FILE="$ROOT_DIR/src/diffusepipe/config/refine_detector.phil"
 
 # DIALS parameters
 MIN_SPOT_SIZE=3
@@ -62,14 +65,16 @@ done
 if [ -z "$EXTERNAL_PDB_FOR_ERYX_CHECK" ]; then echo "ERROR: --external_pdb <path> is REQUIRED for Python script consistency checks." >&2; exit 1; fi
 if [ ! -f "$EXTERNAL_PDB_FOR_ERYX_CHECK" ]; then echo "Error: External PDB for eryx check not found at $EXTERNAL_PDB_FOR_ERYX_CHECK" >&2; exit 1; fi
 if [ ${#CBF_FILES[@]} -eq 0 ]; then echo "Usage: $0 --external_pdb <path_to_pdb_for_eryx_check> <cbf_file1> [cbf_file2 ...]"; exit 1; fi
-if [ ! -f "$FIND_SPOTS_PHIL_FILE" ]; then echo "Error: Spot finding PHIL not found at $FIND_SPOTS_PHIL_FILE" >&2; exit 1; fi
+if [ ! -f "$FIND_SPOTS_PHIL_FILE" ]; then 
+    echo "Error: Spot finding PHIL not found at $FIND_SPOTS_PHIL_FILE" >&2
+    exit 1
+fi
 
 
 START_TIME=$(date +%s)
 PROCESSED_COUNT=0
 FAILED_DIALS_STEPS=0
 FAILED_EXTRACTION_STEPS=0
-ROOT_DIR=$(pwd) # Directory where the script is launched
 LOG_SUMMARY="$ROOT_DIR/dials_processing_summary.log"
 
 # Initialize Summary Log
@@ -121,23 +126,28 @@ for cbf_file_rel_path in "${CBF_FILES[@]}"; do
 
     # 1. dials.import
     echo "Step 1: Running dials.import..."
-    dials.import "$cbf_file_abs_path" output.experiments="$IMPORTED_EXPT" > dials.import.log 2>&1
-    if [ $? -ne 0 ] || [ ! -s "$IMPORTED_EXPT" ]; then 
+    echo "Command: dials.import $cbf_file_abs_path output.experiments=$IMPORTED_EXPT" | tee -a dials.import.log
+    dials.import "$cbf_file_abs_path" output.experiments="$IMPORTED_EXPT" >> dials.import.log 2>&1
+    IMPORT_EXIT_CODE=$?
+    if [ $IMPORT_EXIT_CODE -ne 0 ] || [ ! -s "$IMPORTED_EXPT" ]; then 
         CURRENT_FILE_DIALS_SUCCESS=false
-        echo "Error: dials.import failed for $cbf_file_rel_path. Check log in $(pwd)" >> "$LOG_SUMMARY"
+        echo "Error: dials.import failed for $cbf_file_rel_path with exit code $IMPORT_EXIT_CODE. Check log in $(pwd)" >> "$LOG_SUMMARY"
     fi
 
     # 2. dials.find_spots
     if $CURRENT_FILE_DIALS_SUCCESS; then
         echo "Step 2: Running dials.find_spots..."
-        dials.find_spots "$IMPORTED_EXPT" \
-          "$ROOT_DIR/$FIND_SPOTS_PHIL_FILE" \
+        echo "Command: dials.find_spots $IMPORTED_EXPT $FIND_SPOTS_PHIL_FILE spotfinder.filter.min_spot_size=$MIN_SPOT_SIZE output.reflections=$STRONG_REFL output.shoeboxes=True" | tee -a dials.find_spots.log
+        dials.find_spots \
+          "$IMPORTED_EXPT" \
+          "$FIND_SPOTS_PHIL_FILE" \
           spotfinder.filter.min_spot_size="$MIN_SPOT_SIZE" \
           output.reflections="$STRONG_REFL" \
-          output.shoeboxes=True > dials.find_spots.log 2>&1
-        if [ $? -ne 0 ] || [ ! -s "$STRONG_REFL" ]; then
+          output.shoeboxes=True >> dials.find_spots.log 2>&1
+        FIND_SPOTS_EXIT_CODE=$?
+        if [ $FIND_SPOTS_EXIT_CODE -ne 0 ] || [ ! -s "$STRONG_REFL" ]; then
             CURRENT_FILE_DIALS_SUCCESS=false
-            echo "Error: dials.find_spots failed for $cbf_file_rel_path. Check log." >> "$LOG_SUMMARY"
+            echo "Error: dials.find_spots failed for $cbf_file_rel_path with exit code $FIND_SPOTS_EXIT_CODE. Check log." >> "$LOG_SUMMARY"
         else
             SPOTS_FOUND=$(grep "Saved .* reflections to $STRONG_REFL" dials.find_spots.log | awk '{print $2}')
             echo "Found $SPOTS_FOUND spots for $cbf_file_rel_path." >> "$LOG_SUMMARY"
@@ -151,46 +161,53 @@ for cbf_file_rel_path in "${CBF_FILES[@]}"; do
     # 3. dials.index (using hardcoded cell/SG, outputting indexed_initial.*)
     if $CURRENT_FILE_DIALS_SUCCESS; then
         echo "Step 3: Running dials.index..."
+        echo "Command: dials.index $IMPORTED_EXPT $STRONG_REFL indexing.known_symmetry.unit_cell=$UNIT_CELL indexing.known_symmetry.space_group=$SPACE_GROUP output.experiments=$OLD_INDEXED_EXPT output.reflections=$OLD_INDEXED_REFL" | tee -a dials.index.log
         dials.index "$IMPORTED_EXPT" "$STRONG_REFL" \
           indexing.known_symmetry.unit_cell="$UNIT_CELL" \
           indexing.known_symmetry.space_group="$SPACE_GROUP" \
           output.experiments="$OLD_INDEXED_EXPT" \
-          output.reflections="$OLD_INDEXED_REFL" > dials.index.log 2>&1
-        if [ $? -ne 0 ] || [ ! -s "$OLD_INDEXED_EXPT" ] || [ ! -s "$OLD_INDEXED_REFL" ]; then
+          output.reflections="$OLD_INDEXED_REFL" >> dials.index.log 2>&1
+        INDEX_EXIT_CODE=$?
+        if [ $INDEX_EXIT_CODE -ne 0 ] || [ ! -s "$OLD_INDEXED_EXPT" ] || [ ! -s "$OLD_INDEXED_REFL" ]; then
             CURRENT_FILE_DIALS_SUCCESS=false
-            echo "Error: dials.index failed for $cbf_file_rel_path. Check log." >> "$LOG_SUMMARY"
+            echo "Error: dials.index failed for $cbf_file_rel_path with exit code $INDEX_EXIT_CODE. Check log." >> "$LOG_SUMMARY"
         fi
     fi
     
     # 4. dials.refine (using refine_detector.phil, outputting indexed_refined_detector.*)
     if $CURRENT_FILE_DIALS_SUCCESS; then
         echo "Step 4: Running dials.refine..."
-        if [ -f "$ROOT_DIR/$REFINEMENT_PHIL_FILE" ]; then
+        if [ -f "$REFINEMENT_PHIL_FILE" ]; then
+            echo "Command: dials.refine $OLD_INDEXED_EXPT $OLD_INDEXED_REFL $REFINEMENT_PHIL_FILE output.experiments=$OLD_REFINED_EXPT output.reflections=$OLD_REFINED_REFL" | tee -a dials.refine.log
             dials.refine "$OLD_INDEXED_EXPT" "$OLD_INDEXED_REFL" \
-              "$ROOT_DIR/$REFINEMENT_PHIL_FILE" \
+              "$REFINEMENT_PHIL_FILE" \
               output.experiments="$OLD_REFINED_EXPT" \
-              output.reflections="$OLD_REFINED_REFL" > dials.refine.log 2>&1
+              output.reflections="$OLD_REFINED_REFL" >> dials.refine.log 2>&1
         else
-            echo "Warning: Refinement PHIL file $ROOT_DIR/$REFINEMENT_PHIL_FILE not found. Adding 'refinement.parameterisation.crystal.fix=cell' manually." | tee -a "$LOG_SUMMARY"
+            echo "Warning: Refinement PHIL file $REFINEMENT_PHIL_FILE not found. Adding 'refinement.parameterisation.crystal.fix=cell' manually." | tee -a "$LOG_SUMMARY" dials.refine.log
+            echo "Command: dials.refine $OLD_INDEXED_EXPT $OLD_INDEXED_REFL refinement.parameterisation.crystal.fix=cell output.experiments=$OLD_REFINED_EXPT output.reflections=$OLD_REFINED_REFL" | tee -a dials.refine.log
             dials.refine "$OLD_INDEXED_EXPT" "$OLD_INDEXED_REFL" \
               refinement.parameterisation.crystal.fix=cell \
               output.experiments="$OLD_REFINED_EXPT" \
-              output.reflections="$OLD_REFINED_REFL" > dials.refine.log 2>&1
+              output.reflections="$OLD_REFINED_REFL" >> dials.refine.log 2>&1
         fi
         
-        if [ $? -ne 0 ] || [ ! -s "$OLD_REFINED_EXPT" ] || [ ! -s "$OLD_REFINED_REFL" ]; then
+        REFINE_EXIT_CODE=$?
+        if [ $REFINE_EXIT_CODE -ne 0 ] || [ ! -s "$OLD_REFINED_EXPT" ] || [ ! -s "$OLD_REFINED_REFL" ]; then
             CURRENT_FILE_DIALS_SUCCESS=false
-            echo "Error: dials.refine failed for $cbf_file_rel_path. Check log." >> "$LOG_SUMMARY"
+            echo "Error: dials.refine failed for $cbf_file_rel_path with exit code $REFINE_EXIT_CODE. Check log." >> "$LOG_SUMMARY"
         fi
     fi
 
     # 5. dials.generate_mask (using the final refined files)
     if $CURRENT_FILE_DIALS_SUCCESS; then
         echo "Step 5: Running dials.generate_mask..."
-        dials.generate_mask experiments="$OLD_REFINED_EXPT" reflections="$OLD_REFINED_REFL" output.mask="$BRAGG_MASK" > dials.generate_mask.log 2>&1
-        if [ $? -ne 0 ] || [ ! -s "$BRAGG_MASK" ]; then
+        echo "Command: dials.generate_mask $OLD_REFINED_EXPT output.mask=$BRAGG_MASK" | tee -a dials.generate_mask.log
+        dials.generate_mask "$OLD_REFINED_EXPT" output.mask="$BRAGG_MASK" >> dials.generate_mask.log 2>&1
+        MASK_EXIT_CODE=$?
+        if [ $MASK_EXIT_CODE -ne 0 ] || [ ! -s "$BRAGG_MASK" ]; then
             CURRENT_FILE_DIALS_SUCCESS=false # Mask is crucial
-            echo "Error: dials.generate_mask failed for $cbf_file_rel_path. Check log." >> "$LOG_SUMMARY"
+            echo "Error: dials.generate_mask failed for $cbf_file_rel_path with exit code $MASK_EXIT_CODE. Check log." >> "$LOG_SUMMARY"
         fi
     fi
     # === END OF DIALS STEPS ===
@@ -221,25 +238,25 @@ for cbf_file_rel_path in "${CBF_FILES[@]}"; do
         EXTRACTION_ARGS+=("--data-source" "pixels")
 
 
-        echo "Running extract_dials_data_for_eryx.py..."
-        python "$ROOT_DIR/extract_dials_data_for_eryx.py" "${EXTRACTION_ARGS[@]}" > extract_diffuse_data.log 2>&1
+        echo "Running extractor.py..."
+        python "$ROOT_DIR/src/diffusepipe/extraction/extractor.py" "${EXTRACTION_ARGS[@]}" > extract_diffuse_data.log 2>&1
         EXTRACTION_EXIT_CODE=$?
         if [ $EXTRACTION_EXIT_CODE -ne 0 ]; then
-            echo "Error: extract_dials_data_for_eryx.py failed for $cbf_file_rel_path with exit code $EXTRACTION_EXIT_CODE. See log in $(pwd)" >> "$LOG_SUMMARY"
+            echo "Error: extractor.py failed for $cbf_file_rel_path with exit code $EXTRACTION_EXIT_CODE. See log in $(pwd)" >> "$LOG_SUMMARY"
             FAILED_EXTRACTION_STEPS=$((FAILED_EXTRACTION_STEPS + 1))
         else
-            echo "extract_dials_data_for_eryx.py successful for $cbf_file_rel_path." >> "$LOG_SUMMARY"
+            echo "extractor.py successful for $cbf_file_rel_path." >> "$LOG_SUMMARY"
         fi
 
         if [ "$RUN_DIAGNOSTICS" = true ]; then
             echo "Running diagnostic scripts for $cbf_file_rel_path..."
-            # check_q_vector_consistency.py uses refined.expt and refined.refl
-            python "$ROOT_DIR/check_q_vector_consistency.py" --expt "$(pwd)/$OLD_REFINED_EXPT" --refl "$(pwd)/$OLD_REFINED_REFL" > check_q_consistency.log 2>&1
-            if [ $? -ne 0 ]; then echo "Warning: check_q_vector_consistency.py failed for $cbf_file_rel_path." >> "$LOG_SUMMARY"; fi
+            # consistency_checker.py uses refined.expt and refined.refl
+            python "$ROOT_DIR/src/diffusepipe/diagnostics/consistency_checker.py" --expt "$(pwd)/$OLD_REFINED_EXPT" --refl "$(pwd)/$OLD_REFINED_REFL" > check_q_consistency.log 2>&1
+            if [ $? -ne 0 ]; then echo "Warning: consistency_checker.py failed for $cbf_file_rel_path." >> "$LOG_SUMMARY"; fi
             
-            # calculate_q_per_pixel.py uses refined.expt
-            python "$ROOT_DIR/calculate_q_per_pixel.py" --expt "$(pwd)/$OLD_REFINED_EXPT" --output_prefix "${base_name}" > calculate_q_per_pixel.log 2>&1
-            if [ $? -ne 0 ]; then echo "Warning: calculate_q_per_pixel.py failed for $cbf_file_rel_path." >> "$LOG_SUMMARY"; fi
+            # q_calculator.py uses refined.expt
+            python "$ROOT_DIR/src/diffusepipe/diagnostics/q_calculator.py" --expt "$(pwd)/$OLD_REFINED_EXPT" --output_prefix "${base_name}" > calculate_q_per_pixel.log 2>&1
+            if [ $? -ne 0 ]; then echo "Warning: q_calculator.py failed for $cbf_file_rel_path." >> "$LOG_SUMMARY"; fi
         fi
     else
         echo "DIALS core processing failed for $cbf_file_rel_path. Skipping Python scripts." >> "$LOG_SUMMARY"
@@ -253,7 +270,7 @@ done
 
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
-TOTAL_FULLY_SUCCESSFUL=$(grep -c "extract_dials_data_for_eryx.py successful for" "$LOG_SUMMARY") # More specific grep
+TOTAL_FULLY_SUCCESSFUL=$(grep -c "extractor.py successful for" "$LOG_SUMMARY") # More specific grep
 
 echo "---------------------------------------------------------------------"
 echo "DIALS & Extraction Processing Complete."

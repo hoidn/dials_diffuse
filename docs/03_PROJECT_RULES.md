@@ -9,14 +9,14 @@ This document outlines general project-level rules, conventions, and processes t
 A consistent directory structure is crucial for navigability and maintainability. We recommend the following structure as a baseline, which can be adapted as needed:
 
 ```
-[YourProjectName]/
+DiffusePipe/
 ├── .git/                     # Version control
 ├── .gitignore
 ├── pyproject.toml            # Or requirements.txt, package.json, etc. (Project dependencies & config)
 ├── Makefile                  # Optional: for common development tasks (test, lint, format, build)
 ├── README.md                 # Top-level project overview, setup, and usage
 ├── src/                      # Main source code for the application/library
-│   ├── [your_project_package_name]/ # Primary package
+│   ├── diffusepipe/          # Primary package
 │   │   ├── __init__.py
 │   │   ├── main.py             # Main application entry point (if applicable)
 │   │   ├── components/         # Logical grouping of components/modules
@@ -65,7 +65,7 @@ A consistent directory structure is crucial for navigability and maintainability
 **3. Module/File Length Guideline**
 
 *   **Principle:** Strive to keep modules and files concise and focused on a single responsibility (Single Responsibility Principle).
-*   **Guideline:** As a general rule of thumb, aim to keep individual source code files (e.g., Python `.py` files) under **`[e.g., 300-500]` lines of code (LoC)**, excluding comments and blank lines.
+*   **Guideline:** As a general rule of thumb, aim to keep individual source code files (e.g., Python `.py` files) under **300-500 lines of code (LoC)**, excluding comments and blank lines.
 *   **Rationale:** Shorter files are generally easier to understand, test, and maintain.
 *   **Action:** If a file significantly exceeds this guideline, consider it a signal to refactor. Look for opportunities to extract classes, functions, or sub-modules. Refer to `04_REFACTORING_GUIDE.md`.
 *   **Exception:** This is a guideline, not an absolute rule. Some files, by their nature (e.g., extensive data definitions, large auto-generated files), might be longer. Justify exceptions if they occur.
@@ -105,6 +105,15 @@ A consistent directory structure is crucial for navigability and maintainability
 *   **Storage:** Store ADRs in `docs/ARCHITECTURE/adr/`.
 *   **Review:** ADRs should be reviewed by the team before being marked as "Accepted."
 
+**5.1. Configuration Files and Resources**
+
+*   **Configuration Files:** Store configuration files in appropriate directories based on their purpose:
+    *   **Application Configs:** Store in `src/diffusepipe/config/`.
+    *   **Build/Environment Configs:** Store in the project root or dedicated `config/` directory.
+    *   **Task-specific Configs:** (e.g., PHIL files) Store in the related component's directory under `config/`.
+*   **Referencing Configs:** Scripts should use absolute paths from the project root to reference configuration files rather than assuming relative locations.
+*   **Documentation:** Document the purpose and format of configuration files in a README or in comments within the files themselves.
+
 **6. Documentation Conventions**
 
 *   **Living Document:** Documentation should be treated as a living part of the project and kept up-to-date with code changes.
@@ -139,7 +148,14 @@ A consistent directory structure is crucial for navigability and maintainability
 *   Clearly describe issues, including steps to reproduce for bugs.
 *   Link commits and PRs to relevant issues.
 
-**10. Continuous Integration/Continuous Deployment (CI/CD) (Recommended)**
+**10. Logging DIALS CLI Commands**
+
+*   All command lines used to invoke DIALS tools (e.g., `dials.find_spots`, `dials.refine`, etc.) must be logged.
+*   This logging should capture the exact command and its arguments as executed.
+*   Logging can be to standard output, a dedicated log file, or an integrated logging system.
+*   The purpose is to ensure reproducibility and aid in debugging pipeline issues.
+
+**11. Continuous Integration/Continuous Deployment (CI/CD) (Recommended)**
 
 *   Set up CI pipelines to automatically:
     *   Run linters and formatters.

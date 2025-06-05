@@ -102,17 +102,29 @@ This document outlines the standard conventions, patterns, and rules for impleme
 **7. Testing Conventions**
 
 *   **Framework:** Use a standard testing framework (e.g., `pytest` for Python).
-*   **Emphasis on Integration/Functional Tests:** Prioritize integration tests that verify the collaboration between real component instances according to their IDL contracts.
-*   **Mocking and Patching Strategy (Python/unittest.mock Example):**
-    *   **Guideline 1: Test Dependency Injection by Passing Mocks:** For classes using Dependency Injection, pass mock *objects* into the constructor during test setup. Use `with patch.object(mock_instance, 'method_name', ...)` for per-test configuration of these injected mocks.
-    *   **Guideline 2: Patch Where It's Looked Up:** When using `patch` (e.g., `unittest.mock.patch`), the `target` string must be the path to the object *where it is looked up/imported*, not necessarily where it was defined.
-    *   **Guideline 3: Prefer Specific Patching:** Apply patches only where needed (e.g., `@patch` on test functions, `with patch(...)` context managers) rather than broad, automatic patching.
-    *   **Guideline 4: Minimize Mocking (Strategic Use):** Avoid excessive mocking. Mock primarily at external boundaries (external APIs, filesystem if necessary) or for components that are slow, non-deterministic, or have significant side effects not relevant to the test.
-    *   **Guideline 4a: Ensure Mock Type Fidelity for External Libraries:** When mocking methods from external libraries, ensure mock return values match the **expected type** returned by the real library, especially if your code uses `isinstance()`. Use real library types for mock data if possible.
-    *   **Guideline 6: Verify Mock Calls Correctly:** Assert mock calls on the correct mock object (the one created by the patcher or injected).
-    *   **Guideline 7.X: Mock Configuration for Multiple/Complex Interactions:** Configure mocks appropriately *before each specific interaction* within a test.
-    *   **Guideline 7a: Maintain Test Environment Dependency Parity:** Critical runtime dependencies MUST be installed and importable in the test environment. Avoid dummy class fallbacks in test setup.
-    *   **Guideline 7b: Testing Wrapper Interactions / Library Boundaries:** Test argument preparation logic for external library calls separately from the external call itself (which can be mocked).
+*   **Prioritize Integration and Functional Tests:**
+    *   **Core Principle:** Integration tests with real components should be the foundation of your testing strategy. Test components together as they would operate in production to verify their interactions fulfill IDL contracts.
+    *   **Real-World Scenarios:** Design tests around realistic workflows that exercise multiple components working together.
+    *   **No Mock Chains:** Never use chains of mocks where one mock returns another mock. This creates tests that pass but don't validate actual behavior.
+
+*   **Avoiding Mocks - Preferred Alternatives:**
+    *   **Use Real Components:** Whenever possible, instantiate and use actual component implementations in tests rather than mocks.
+    *   **Test Databases:** Use ephemeral test databases (e.g., SQLite in-memory, containerized PostgreSQL) rather than mocking database interactions.
+    *   **File System:** Use temporary directories and files rather than mocking file system operations.
+    *   **Test Fixtures:** Create comprehensive fixtures that provide real test data and properly configured components.
+    *   **Test Doubles:** When necessary, prefer simple stubs or fakes that implement the same interface as the real component but with simplified behavior, rather than mocks with complex expectations.
+
+*   **Limited Mocking - Only When Necessary:**
+    *   **External API Boundaries:** Mock third-party APIs with usage limits, authentication requirements, or that require complex infrastructure that can't be containerized.
+    *   **Non-Deterministic Components:** Mock components whose behavior cannot be controlled deterministically in a test environment (e.g., random number generators, time-dependent operations).
+    *   **Expensive Resources:** Mock resources that are prohibitively expensive to create for each test run and cannot be reasonably containerized.
+
+*   **When Mocking Is Unavoidable:**
+    *   **Patch Where It's Looked Up:** When using `patch` (e.g., `unittest.mock.patch`), the `target` string must be the path to the object *where it is looked up/imported*, not necessarily where it was defined.
+    *   **Prefer Dependency Injection:** For classes using Dependency Injection, pass test doubles into the constructor during test setup rather than patching.
+    *   **Ensure Type Fidelity:** When mocking external libraries, ensure mock return values match the **expected type** returned by the real library. Use real library types for mock data if possible.
+    *   **Verify Critical Dependencies:** Ensure critical runtime dependencies are installed and importable in the test environment.
+    *   **Test Boundaries Separately:** Test argument preparation logic for external API calls separately from the external call itself.
 *   **Test Doubles:** Use appropriate test doubles (Stubs, Mocks, Fakes).
 *   **Arrange-Act-Assert:** Structure tests clearly.
 *   **Fixtures:** Use testing framework fixtures for setup.

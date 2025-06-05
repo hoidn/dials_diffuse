@@ -1,4 +1,4 @@
-# Developer Orientation: Getting Started with [YourProjectName]
+# Developer Orientation: Getting Started with DiffusePipe
 
 **Welcome!** This document is your starting point for understanding how we build software in this project. Our approach emphasizes clear specifications and consistent implementation patterns. Please read this guide carefully before diving into the code.
 
@@ -69,10 +69,10 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
 
 **4. Key Coding Standards**
 
-*   **Python Version:** `[Specify target Python version, e.g., 3.10+]`
-*   **Formatting:** PEP 8 compliant, enforced by `[Formatter, e.g., Black]` & `[Linter, e.g., Ruff]` (run `make format` / `make lint` or equivalent).
+*   **Python Version:** `3.10+`
+*   **Formatting:** PEP 8 compliant, enforced by `Black` & `Ruff` (run `make format` / `make lint` or equivalent).
 *   **Type Hinting:** **Mandatory** for all signatures. Use standard `typing` types. Be specific.
-*   **Docstrings:** **Mandatory** for all modules, classes, functions, methods. Use **`[Docstring Style, e.g., Google Style]`**.
+*   **Docstrings:** **Mandatory** for all modules, classes, functions, methods. Use **Google Style** docstrings.
 *   **Imports:** Use **absolute imports** from `src` (or your project's source root). Group imports correctly. Top-level only unless exceptional reason exists (document it).
 *   **Naming:** PEP 8 (snake_case for functions/variables, CamelCase for classes). Use descriptive names.
 *   **Logging:** Use the standard `logging` module. Configure logging early in entry-point scripts as detailed in `02_IMPLEMENTATION_RULES.md`.
@@ -95,9 +95,10 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
     *   **Standard:** Use a dedicated manager or bridge class to encapsulate interactions with significant external services.
     *   **Practice:** This manager class handles connection details, API call formatting, and basic response parsing. Other components use this manager rather than interacting directly with the external service's raw API.
     *   **Reference:** See relevant section in `02_IMPLEMENTATION_RULES.md` and project-specific library integration guides (e.g., in `LIBRARY_INTEGRATION/`).
-*   **Integration with [ExternalToolName] via [Protocol/Library]:**
-    *   **Standard:** Interaction with specific external tools (e.g., a code analysis tool, a specialized CLI) is handled via a dedicated "Bridge" component.
-    *   **Practice:** The Bridge acts as a client to the external tool, potentially using a specific protocol or library. Application logic calls methods on the Bridge.
+*   **Integration with DIALS via Command Line:**
+    *   **Standard:** Interaction with DIALS crystallography software is primarily handled through the `process_pipeline.sh` script, which orchestrates DIALS command-line tools.
+    *   **Practice:** The shell script provides consistent parameter passing to DIALS tools and manages workflow orchestration, while Python modules (`extractor.py`, `consistency_checker.py`, etc.) process and analyze DIALS outputs.
+    *   **Configuration:** PHIL files in `src/diffusepipe/config/` provide standardized parameter settings for DIALS tools.
 *   **Host Language Orchestration with DSL/Script Evaluation (if applicable):**
     *   **Concept:** For projects with an embedded Domain-Specific Language (DSL) or scripting capability, use the host language (e.g., Python) for complex data preparation. The DSL/script then focuses on orchestration, referencing data prepared by the host language.
     *   **Practice:** Python code prepares data, creates an environment for the DSL, binds data to variables, and then calls the DSL evaluator.
@@ -105,29 +106,63 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
 
 **6. Testing Strategy**
 
-*   **Framework:** `[Testing Framework, e.g., pytest]`.
-*   **Focus:** Prioritize **Integration and Functional/End-to-End tests** over isolated unit tests. Verify components work together correctly according to their IDL contracts.
-*   **Mocking:** **Minimize mocking.** Mock primarily at external boundaries (external APIs, services) or where strictly necessary. Prefer using real instances of internal components in integration tests.
-*   **Error Path Testing:** Explicitly test error handling and propagation.
-*   **Fixtures:** Use testing framework fixtures for setup.
+*   **Framework:** `pytest`.
+*   **Focus:** **Strongly emphasize Integration and Functional/End-to-End tests** over isolated unit tests. Components should be tested together to verify they work correctly according to their IDL contracts in realistic scenarios.
+*   **Real Components Over Mocks:** **Avoid mocks whenever possible.** Use actual component implementations in tests to ensure behavior matches production. The goal is to verify real interactions, not theoretical ones.
+*   **When to Use Real Components:**
+    *   For all internal project components
+    *   For file system operations (when reasonable)
+    *   For database operations (using test databases)
+    *   For any component where behavior can be realistically simulated
+*   **Limited Mock Usage:** Only mock external services when absolutely necessary:
+    *   Third-party APIs with usage limits or authentication requirements
+    *   Services requiring complex infrastructure that can't be containerized
+    *   Components with non-deterministic behavior that can't be controlled
+*   **Error Path Testing:** Explicitly test error handling and propagation with real components.
+*   **Fixtures:** Use testing framework fixtures for setup of test environments and dependencies.
 *   **Structure:** Follow the `Arrange-Act-Assert` pattern. Mirror the `src` directory structure in `tests`.
 
 > **Further Reading:** See relevant section in `02_IMPLEMENTATION_RULES.md`.
 
-**7. Project Navigation (Example Structure)**
+**7. Project Navigation (Actual Structure)**
 
-*   **`src/` (or your source root):** Main application source code.
-    *   `src/component_a/`
-    *   `src/component_b/`
-    *   `src/system/` (for core system-wide utilities, models, errors)
-*   **`tests/`**: Tests, mirroring the `src` structure.
+*   **`src/` (source root):** Main application source code.
+    *   `src/diffusepipe/`: Primary package
+        *   `__init__.py`
+        *   `config/`: Configuration files (PHIL files)
+            *   `find_spots.phil`
+            *   `refine_detector.phil`
+        *   `diagnostics/`: Diagnostic tools
+            *   `__init__.py`
+            *   `consistency_checker.py`
+            *   `consistency_checker_IDL.md`
+            *   `q_calculator.py`
+            *   `q_calculator_IDL.md`
+        *   `extraction/`: Data extraction components
+            *   `__init__.py`
+            *   `extractor.py`
+            *   `extractor_IDL.md`
+        *   `orchestration/`: Pipeline coordination
+            *   `__init__.py`
+            *   `pipeline_orchestrator_IDL.md`
+        *   `types/`: Data type definitions
+            *   `__init__.py`
+            *   `types_IDL.md`
+    *   `src/scripts/`: Processing scripts
+        *   `process_pipeline.sh`: Main processing script
 *   **`docs/`**: All project documentation.
-    *   `docs/01_IDL_GUIDELINES.md`
-    *   `docs/ARCHITECTURE/types.md` (Shared data structure definitions)
-    *   `docs/02_IMPLEMENTATION_RULES.md`
-    *   `docs/03_PROJECT_RULES.md`
-    *   `docs/examples/` (Example usage patterns)
-    *   `src/**/[component_name]_IDL.md` (Specific interface definitions)
+    *   `docs/00_START_HERE.md`: This file
+    *   `docs/01_IDL_GUIDELINES.md`: IDL structure and syntax guidelines
+    *   `docs/02_IMPLEMENTATION_RULES.md`: Code implementation standards
+    *   `docs/03_PROJECT_RULES.md`: Project workflow and organization
+    *   `docs/04_REFACTORING_GUIDE.md`: Guidelines for code refactoring
+    *   `docs/05_DOCUMENTATION_GUIDE.md`: Documentation standards
+    *   `docs/ARCHITECTURE/`: Architecture documentation
+        *   `adr/`: Architecture Decision Records
+        *   `types.md`: Shared data structure definitions
+    *   `docs/LIBRARY_INTEGRATION/`: External library integration guides
+    *   `docs/TEMPLATES/`: Document templates
+    *   `docs/WORKFLOWS/`: Workflow documentation
 *   **`README.md`**: Top-level project overview.
 
 **8. Development Workflow & Recommended Practices**
@@ -143,16 +178,31 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
 
 ---
 
-**9. Getting Started Checklist**
+**9. External Dependencies**
+
+*   **DIALS Crystallography Software:** The project relies heavily on DIALS for crystallographic data processing.
+    *   Must be installed and available in the system PATH
+    *   Commands used include: `dials.import`, `dials.find_spots`, `dials.index`, `dials.refine`, and `dials.generate_mask`
+*   **PDB Files:** The project uses PDB files (e.g., `6o2h.pdb`) for crystallographic consistency checks.
+    *   Used by the Python scripts to validate processing results against known structures
+    *   Must be provided via the `--external_pdb` parameter to the processing script
+*   **Python Dependencies:**
+    *   `dxtbx`: DIALS Toolbox for image format reading
+    *   `cctbx`: Computational Crystallography Toolbox
+    *   `numpy`, `scipy`: Numerical processing
+    *   `matplotlib`: Optional visualization
+    *   `tqdm`: Progress bars
+
+**10. Getting Started Checklist**
 
 1.  [ ] Read this document (`00_START_HERE.md`).
 2.  [ ] Read `01_IDL_GUIDELINES.md` to understand IDL guidelines.
 3.  [ ] Read `02_IMPLEMENTATION_RULES.md` for detailed coding/testing rules.
 4.  [ ] Read `03_PROJECT_RULES.md` for project structure and workflow.
 5.  [ ] Review the main `README.md` and key architecture diagrams (e.g., in `docs/ARCHITECTURE/`).
-6.  [ ] Set up your local development environment (`[Target Language/Platform]`, dependencies, pre-commit hooks).
-7.  [ ] Browse the `src/` (or equivalent) directory and a few IDL files to see the structure.
-8.  [ ] Try running the tests (`[test command, e.g., pytest tests/]`).
+6.  [ ] Set up your local development environment (`Python 3.10+`, DIALS, dependencies).
+7.  [ ] Browse the `src/` directory and a few IDL files to see the structure.
+8.  [ ] Try running the processing script with a test CBF file and PDB file.
 9.  [ ] Ask questions!
 
 Welcome aboard! By following these guidelines, we can build a robust, maintainable, and consistent system together.
