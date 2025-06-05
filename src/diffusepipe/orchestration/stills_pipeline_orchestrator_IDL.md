@@ -31,7 +31,7 @@ module src.diffusepipe.orchestration {
         //      c. The adapter invokes the `Processor`'s main method (e.g., `process_experiments`) on the imported `ExperimentList`. This internally handles spot finding, indexing, refinement, and integration (including partiality calculation and optional shoebox output).
         //      d. The adapter logs relevant command-equivalent information (e.g., PHIL parameters used), captures DIALS logs, and monitors for successful completion.
         //      e. If the `dials.stills_process` adapter reports failure, sets `StillProcessingOutcome.status` to "FAILURE_DIALS", records details in `dials_outcome`, logs to summary, and proceeds to the next CBF file.
-        //      f. If successful, the adapter retrieves the `integrated.expt` (containing `Crystal_i`) and `integrated.refl` (containing Bragg spots, partialities, and optionally shoeboxes) as DIALS Python objects.
+        //      f. If successful, the adapter retrieves the `integrated.expt` (containing `Crystal_i`) and `integrated.refl` (containing Bragg spots, partialities, and optionally shoeboxes) as DIALS Python objects. Note: Partialities from `dials.stills_process` are used for DIALS integration quality but NOT as quantitative divisors in subsequent scaling (due to accuracy limitations for true stills).
         //   4. **Data Extraction Stage:**
         //      a. If all DIALS steps succeeded:
         //         i. Prepares `ComponentInputFiles` (paths to `cbf_path`, `indexed_refined_detector.expt`, `indexed_refined_detector.refl`, `bragg_mask.pickle`, and `config.extraction_config.external_pdb_path` if specified in `config`).

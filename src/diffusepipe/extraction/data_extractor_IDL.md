@@ -37,13 +37,12 @@ module src.diffusepipe.extraction {
         //    c. For each valid pixel:
         //       i. **Q-Vector Calculation:** Calculates the scattering vector `q` (components qx, qy, qz) for the pixel center using the DIALS `Experiment` geometry (detector panel, beam vector).
         //       ii. **Intensity & Initial Error:** Reads raw intensity $I_{raw}$. Applies `config.gain`. Initial sigma $\sigma_{raw} = \sqrt{I_{raw} \cdot \text{gain}}$ (assuming Poisson statistics).
-        //       iii. **Corrections (and error propagation):**
-        //            - Lorentz factor (appropriate for still geometry).
-        //            - Polarization factor (using beam polarization from DIALS model).
-        //            - Solid angle correction.
-        //            - Air attenuation (if parameters provided and significant).
-        //            - Detector efficiency (if model available).
-        //            Each correction factor is applied to $I$ and its effect propagated to $\sigma_I$.
+        //       iii. **Corrections (and error propagation) using DIALS API and Custom Calculations:**
+        //            - **Lorentz-Polarization (LP) correction:** Obtained via adapter to DIALS `dials.algorithms.integration.Corrections` class using the Experiment model for the current still. Handles complex effects like parallax internally.
+        //            - **Detector Quantum Efficiency (QE) correction:** Obtained via adapter to DIALS `dials.algorithms.integration.Corrections` class.
+        //            - **Solid angle correction:** Custom calculation based on pixel geometry and detector properties (not available from DIALS Corrections for arbitrary diffuse pixels).
+        //            - **Air attenuation correction:** Custom calculation based on beam path length and wavelength (if parameters provided and significant).
+        //            All correction factors are converted to multipliers and combined into `TotalCorrection_mult(p)`. Each correction factor is applied to $I$ and its effect propagated to $\sigma_I$.
         //       iv. **Background Subtraction (and error propagation):**
         //            - If `config.subtract_measured_background_path` is provided: Load background map, subtract value for current pixel. Add variance of background to current $\sigma_I^2$.
         //            - Else if `config.subtract_constant_background_value` is provided: Subtract constant. (Error propagation for constant subtraction is typically zero unless constant has uncertainty).

@@ -28,7 +28,10 @@ module src.diffusepipe.types {
         // Overrides or supplements PHIL file if provided.
         output_shoeboxes: optional boolean;
 
-        // Behavior: If true, ensures partialities are calculated and output by dials.stills_process. This is critical.
+        // Behavior: If true, ensures partialities are calculated and output by dials.stills_process.
+        // Note: While partialities are still useful for DIALS integration quality assessment,
+        // they will NOT be used as quantitative divisors in this pipeline's scaling (due to
+        // inaccuracies for true stills). Instead, P_spot serves as a threshold filter.
         // Overrides or supplements PHIL file if provided.
         calculate_partiality: optional boolean; // Should default to true in implementation
 
@@ -71,7 +74,8 @@ module src.diffusepipe.types {
         // Behavior: Process every Nth pixel (e.g., 1 for all pixels, 2 for every other).
         pixel_step: int;
 
-        // Behavior: If true, a simplified Lorentz-Polarization correction is applied.
+        // Behavior: If true, Lorentz-Polarization correction is applied using DIALS Corrections API.
+        // This leverages the robust, well-tested dials.algorithms.integration.Corrections class.
         lp_correction_enabled: boolean;
 
         // Behavior: Path to a pre-processed background image/map (e.g., NPZ or image format) to be subtracted pixel-wise.
@@ -88,11 +92,36 @@ module src.diffusepipe.types {
         verbose: boolean;
     }
 
+    // Configuration for the relative scaling model (future DiffuseDataMerger component)
+    // Behavior: Controls the complexity and parameters of the custom scaling model used in Module 3.S.3.
+    struct RelativeScalingConfig {
+        // Behavior: If true, refines a per-still (or per-group) overall multiplicative scale factor.
+        // This is part of the initial default multiplicative-only model.
+        refine_per_still_scale: boolean; // Should default to true
+
+        // Behavior: If true, refines a 1D resolution-dependent multiplicative scale factor.
+        // This is optionally part of the initial default multiplicative-only model.
+        refine_resolution_scale_multiplicative: boolean; // Should default to false initially
+
+        // Behavior: Number of bins for resolution-dependent scaling if enabled.
+        resolution_scale_bins: optional int;
+
+        // Behavior: If true, refines additive offset components (e.g., background terms).
+        // CRITICAL: This should be false initially to avoid parameter correlation issues.
+        // Only enable after multiplicative model is stable and residuals justify it.
+        refine_additive_offset: boolean; // Should default to false
+
+        // Behavior: Minimum P_spot threshold for including Bragg reflections in reference generation.
+        // Reflections below this threshold are excluded to avoid poor-quality data.
+        min_partiality_threshold: float; // Should default to 0.1
+    }
+
     // Overall pipeline configuration for processing stills
     // Behavior: Encapsulates all settings for the StillsPipelineOrchestrator.
     struct StillsPipelineConfig {
         dials_stills_process_config: DIALSStillsProcessConfig; // Updated
         extraction_config: ExtractionConfig;
+        relative_scaling_config: RelativeScalingConfig; // Configuration for future scaling component
         run_consistency_checker: boolean; // If true, ConsistencyChecker is run after successful extraction.
         run_q_calculator: boolean;      // If true, QValueCalculator is run after successful extraction.
     }

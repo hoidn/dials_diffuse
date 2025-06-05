@@ -2734,7 +2734,7 @@ Compton scattering calculations provide theoretical baselines for separating ela
 ### C.4. Geometric Corrections
 
 **1. Purpose:**
-Apply Lorentz-polarization, solid angle, detector efficiency, and air attenuation corrections essential for accurate diffuse scattering intensity analysis and comparison with theoretical models.
+Apply Lorentz-polarization, solid angle, detector efficiency, and air attenuation corrections essential for accurate diffuse scattering intensity analysis. **CRITICAL: For the diffuse scattering pipeline, LP and QE corrections should be obtained from the robust DIALS Corrections API to avoid reimplementation errors. Only Solid Angle and Air Attenuation require custom implementations for diffuse pixels.**
 
 **2. Primary Python Call(s):**
 ```python
@@ -2743,18 +2743,23 @@ from dials.algorithms.integration.kapton_correction import KaptonAbsorption
 import math
 from scitbx import matrix
 
-# Method 1: Using DIALS correction calculator
+# Method 1: Using DIALS correction calculator (RECOMMENDED for LP and QE)
 corrector = CorrectionsMulti()
 for exp in experiments:
     corrector.append(Corrections(exp.beam, exp.goniometer, exp.detector))
 
-# Calculate Lorentz-polarization correction
+# Calculate Lorentz-polarization correction (returns divisors)
 lp_correction = corrector.lp(reflections["id"], reflections["s1"])
 
-# Calculate quantum efficiency correction
+# Calculate quantum efficiency correction (returns multipliers)
 qe_correction = corrector.qe(reflections["id"], reflections["s1"], reflections["panel"])
 
-# Method 2: Manual geometric corrections for custom analysis
+# For diffuse scattering: Use single Corrections object per still
+corrections_obj = Corrections(experiment.beam, experiment.goniometer, experiment.detector)
+# Apply to arrays of s1 vectors for diffuse pixels
+
+# Method 2: Manual geometric corrections - ONLY for Solid Angle & Air Attenuation
+# (LP and QE should use DIALS API above to avoid errors)
 def calculate_solid_angle_correction(detector, panel_id, pixel_coord, beam):
     """Calculate solid angle subtended by a pixel"""
     panel = detector[panel_id]
@@ -2885,23 +2890,23 @@ def calculate_air_attenuation_correction(lab_coord, wavelength_angstrom,
 ```python
 from dials.algorithms.integration import CorrectionsMulti, Corrections
 
-# Method A: Using DIALS built-in corrections
-corrector = CorrectionsMulti()
-for exp in experiments:
-    corrector.append(Corrections(exp.beam, exp.goniometer, exp.detector))
+# Method A: Hybrid approach for diffuse scattering (RECOMMENDED)
+# Use DIALS API for LP & QE, custom calculations for Solid Angle & Air Attenuation
 
-# Apply standard corrections
-lp_corrections = corrector.lp(reflections["id"], reflections["s1"])  # Returns divisors
-qe_corrections = corrector.qe(reflections["id"], reflections["s1"], reflections["panel"])  # Returns multipliers
+corrections_obj = Corrections(experiment.beam, experiment.goniometer, experiment.detector)
 
-# Apply corrections with proper convention
-# LP and QE corrections from DIALS have different application conventions
-corrected_intensities = (reflections["intensity.sum.value"] / lp_corrections) * qe_corrections
+# For arrays of diffuse pixel s1 vectors and panel IDs
+lp_corrections = corrections_obj.lp(s1_array)  # Returns divisors
+qe_corrections = corrections_obj.qe(s1_array, panel_ids)  # Returns multipliers
 
-# Alternative: Convert all to multiplicative form for consistency
+# Custom calculations for remaining factors
+solid_angle_factors = []  # Custom calculation needed
+air_attenuation_factors = []  # Custom calculation needed
+
+# Convert all to multiplicative form for consistency
 lp_mult = 1.0 / lp_corrections
-total_multiplicative_corrections = lp_mult * qe_corrections
-corrected_intensities_alt = reflections["intensity.sum.value"] * total_multiplicative_corrections
+total_multiplicative_corrections = lp_mult * qe_corrections * solid_angle_mult * air_mult
+corrected_intensities = raw_intensities * total_multiplicative_corrections
 
 print(f"LP corrections (divisors): {flex.min(lp_corrections):.3f} to {flex.max(lp_corrections):.3f}")
 print(f"QE corrections (multipliers): {flex.min(qe_corrections):.3f} to {flex.max(qe_corrections):.3f}")
