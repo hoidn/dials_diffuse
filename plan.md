@@ -340,7 +340,7 @@ This array-centric approach is critical for achieving acceptable performance and
             *   `P_spot` **is *only* used as a quality flag**.  We keep reflections with `P_spot ≥ P_min_thresh` (default 0.1) but we **never divide by it** at any later stage.  
             *   Absolute scale will be obtained from Wilson statistics on merged Bragg data rather than from partiality-corrected intensities.  
             *   Unit tests formerly referring to “divide by P_spot” are removed; new tests assert that intensity values are unchanged after the quality filter.
-*   **Process (Iterative, using a custom `DiffuseScalingModel` class derived from `dials.algorithms.scaling.model.ScalingModelBase` and a custom `DiffuseScalingTarget` function/class):**
+*   **Process (Iterative, using a minimal‐parameter v1 model):**
     1.  **Parameter Management Setup:** Initialize DIALS's active parameter manager with all refineable parameters from all `ScalingModel_i` components. Set up any restraints (e.g., for smoothness of Gaussian smoother parameters).
     2.  **Iterative Refinement Loop:**
         a.  **Reference Generation:**
