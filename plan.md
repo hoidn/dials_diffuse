@@ -285,7 +285,14 @@ This array-centric approach is critical for achieving acceptable performance and
        *If rms Δhkl > 0.1* the per-still orientation matrix `U_i` is used to pre-rotate each `q_vec` before the common transform (see Module 3.S.2).
         This involves:
         a.  **Average Unit Cell (`UC_avg`):** Robustly average all `Crystal_i.get_unit_cell()` parameters using CCTBX utilities to obtain `UC_avg`. This defines the reciprocal metric tensor `B_avg_ref = (UC_avg.fractionalization_matrix())^-T`.
-        b.  **Average Orientation Matrix (`U_avg_ref`):** Extract `U_i = Crystal_i.get_U()` for each still. Average these `U_i` matrices using a robust method suitable for rotation matrices (e.g., conversion to quaternions, averaging, and conversion back to a matrix; or averaging of small rotation vectors if deviations are minimal). The chosen method must be documented in the implementation.
+        b.  **Average Orientation Matrix (`U_avg_ref`):**
+            i.  Extract `U_i = Crystal_i.get_U()` for each still `i`.
+            ii. **Pre-check for Orientation Spread:**
+                - Select an initial reference orientation, e.g., `U_ref_for_check = U_0` (the first `U_i` in the list).
+                - For every other `U_i`, calculate the misorientation angle (in degrees) between `U_i` and `U_ref_for_check` (e.g., from the trace of the rotation matrix `U_i · U_ref_for_checkᵀ`).
+                - Calculate the Root Mean Square (RMS) of these misorientation angles.
+                - If this RMS misorientation exceeds a threshold (e.g., 3-5 degrees), issue a prominent warning in the log. This warning should state that the significant spread in crystal orientations may lead to a `U_avg_ref` that is not highly representative and could result in smearing of features in the final merged diffuse map. For the v1 pipeline, averaging will still proceed. (Future versions might consider clustering or per-observation orientation adjustments if this spread is problematic).
+            iii. Average all `U_i` matrices using a robust method suitable for rotation matrices (e.g., conversion to quaternions, averaging of quaternions using a method like Slerp or Nlerp if applicable for multiple matrices, and conversion back to a matrix; or averaging of small rotation vectors if deviations are confirmed to be minimal by the pre-check). The chosen averaging method must be documented in the implementation.
         c.  The final setting matrix for the grid is `A_avg_ref = U_avg_ref * B_avg_ref`. This matrix defines the grid's orientation and cell in the common laboratory frame.
     2.  Using `Crystal_avg_ref`, transform all `q_vector` components from all `CorrectedDiffusePixelList_i` to fractional Miller indices `(h,k,l)` to determine the overall minimum and maximum H, K, L ranges covered by the data, considering the target resolution limits.
     3.  Define the `GlobalVoxelGrid` object. This object will store:
@@ -379,6 +386,7 @@ This array-centric approach is critical for achieving acceptable performance and
         c.  Apply the scaling: `I_final_relative = (I_corr - C_i) / M_i`.
         d.  Propagate uncertainties: `Sigma_final_relative = Sigma_corr / abs(M_i)`.
             **(Note: This formula is valid for the v1 scaling model where the additive offset `C_i` is zero. If future versions refine `C_i` with non-zero uncertainty `Var(C_i)`, the formula must be updated to `Sigma_final_relative = sqrt(Sigma_corr² + Var_C_i) / abs(M_i)`, requiring `Var(C_i)` to be estimated from the scaling model refinement.)**
+            **Implementation Note for v1:** The code applying the scaling model (Module 3.S.4) should confirm that the additive component `C_i` derived from the `ScalingModel_refined_list` is indeed effectively zero (e.g., `abs(C_i) < 1e-9`) before using this simplified error propagation formula, especially if the scaling model structure could theoretically produce a non-zero `C_i` even if `refine_additive_offset` was `False`. This can be achieved with an assertion or a conditional check.
     2.  For each `voxel_idx` in `GlobalVoxelGrid`:
         a.  Collect all `I_final_relative` and `Sigma_final_relative` values from observations binned to this `voxel_idx`.
         b.  Perform a weighted merge (typically inverse variance weighting: `weight = 1 / Sigma_final_relative^2`) to calculate `I_merged_relative(voxel_idx)` and `Sigma_merged_relative(voxel_idx)`.
