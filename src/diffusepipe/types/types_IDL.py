@@ -73,6 +73,9 @@ class ExtractionConfig(BaseModel):
     orient_tolerance_deg: float = Field(
         description="Tolerance in degrees for comparing DIALS-derived crystal orientation with an external PDB reference"
     )
+    q_consistency_tolerance_angstrom_inv: float = Field(
+        description="Tolerance in Å⁻¹ for q-vector consistency checks in geometric model validation"
+    )
     pixel_step: int = Field(
         description="Process every Nth pixel (e.g., 1 for all pixels, 2 for every other)"
     )

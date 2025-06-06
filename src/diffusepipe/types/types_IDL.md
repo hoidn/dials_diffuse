@@ -70,6 +70,11 @@ module src.diffusepipe.types {
         // Behavior: Tolerance in degrees for comparing DIALS-derived crystal orientation with an external PDB reference.
         orient_tolerance_deg: float;
 
+        // Preconditions: Must be a positive float (e.g., 0.01 for 0.01 Å⁻¹ tolerance).
+        // Behavior: Tolerance in Å⁻¹ for q-vector consistency checks in geometric model validation.
+        // Used in Module 1.S.1.Validation to compare |q_bragg - q_pixel_recalculated|.
+        q_consistency_tolerance_angstrom_inv: float;
+
         // Preconditions: Must be a positive integer.
         // Behavior: Process every Nth pixel (e.g., 1 for all pixels, 2 for every other).
         pixel_step: int;

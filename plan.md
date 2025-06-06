@@ -81,7 +81,7 @@ Initially, these QC reports (plots and text summaries saved to the output direct
 
 **Phase 1: Per-Still Geometry, Indexing, and Initial Masking**
 
-**Module 1.S.1: Per-Still Crystallographic Processing using `dials.stills_process` via Python API**
+**Module 1.S.1: Per-Still Crystallographic Processing and Model Validation**
 *   **Action:** For each input still image `i`, use the Python API of `dials.stills_process` (specifically, the `dials.command_line.stills_process.Processor` class via an adapter) to perform spot finding, indexing, optional geometric refinement, and integrate Bragg reflections. This process determines the crystal orientation `U_i`, unit cell `Cell_i`, and reflection partialities `P_spot` for each still.
 *   **Input (per still `i` or a small batch of stills):**
     *   File path(s) to raw still image(s).
@@ -103,15 +103,52 @@ Initially, these QC reports (plots and text summaries saved to the output direct
         *   (Optional) Refinement of crystal model `Crystal_i` and experimental geometry.
         *   Integration of indexed Bragg spots, including calculation of partialities.
     4.  The adapter collects the output `integrated_experiments` (a list of `dxtbx.model.Experiment` objects) and `integrated_reflections` (a `dials.array_family.flex.reflection_table`) from the `Processor` instance.
+    5.  If the DIALS processing adapter reports success, proceed to Sub-Module 1.S.1.Validation. If validation fails, set StillProcessingOutcome.status to "FAILURE_GEOMETRY_VALIDATION", record details, log to summary, and proceed to the next CBF file.
+    6.  If successful, retrieve objects and continue to subsequent processing modules (Module 1.S.3 and Phase 2).
 *   **Output (for each successfully processed still `i`):**
     *   `Experiment_dials_i`: The `dxtbx.model.Experiment` object from `integrated_experiments` corresponding to still `i`, containing the refined `Crystal_i`.
     *   `Reflections_dials_i`: A `dials.array_family.flex.reflection_table` (selected from `integrated_reflections` by experiment `id` if `dials.stills_process` outputs a composite table for a batch) containing indexed Bragg spots for still `i`. This table **must** include a column named `"partiality"` containing `P_spot` values. **Note:** The quantitative reliability of `P_spot` values from `dials.stills_process` for true still images requires careful validation. See Module 3.S.3 for strategies on its use in scaling.
     *   (If configured in `dials.stills_process`) Shoebox data associated with `Reflections_dials_i`, stored within the reflection table or as separate files, if needed for Bragg mask generation (Option B in Module 1.S.3).
 *   **Consistency Check:** Successful execution of `dials.stills_process` for the still (indicated by the adapter). Validity of the output `Crystal_i` model. Presence and reasonableness of values in the `"partiality"` column of `Reflections_dials_i`.
-*   **Testing (Module 1.S.1):**
-    *   **Input:** Curated still image file(s), base geometry data, `dials.stills_process` PHIL configuration string.
-    *   **Execution:** Invoke the Python adapter for `dials.stills_process.Processor`.
-    *   **Verification:** Assert correct generation of `Experiment_dials_i` and `Reflections_dials_i`. `Reflections_dials_i` must contain a `"partiality"` column with valid floating-point numbers. The `Crystal_i` model should be sensible and refined if expected. Test handling of indexing failures for some stills in a batch.
+
+*   **Sub-Module 1.S.1.Validation: Geometric Model Consistency Checks**
+    *   **Action:** Immediately after successful DIALS processing for still `i`, perform geometric consistency checks on the generated `Experiment_dials_i` and `Reflections_dials_i`.
+    *   **Input (per still `i`):**
+        *   `Experiment_dials_i` (from main 1.S.1 output).
+        *   `Reflections_dials_i` (from main 1.S.1 output).
+        *   `external_pdb_path` (if provided in the global pipeline `config.extraction_config.external_pdb_path`).
+        *   Configuration for tolerances (e.g., `config.extraction_config.cell_length_tol`, `config.extraction_config.cell_angle_tol`, `config.extraction_config.orient_tolerance_deg`, and a new tolerance for `|Δq|` differences, e.g., `q_consistency_tolerance_angstrom_inv`).
+    *   **Process:**
+        1.  **PDB Consistency Checks (if `external_pdb_path` provided):**
+            a.  Compare unit cell parameters (lengths and angles) from `Experiment_dials_i.crystal` against the reference PDB, using `config.extraction_config.cell_length_tol` and `config.extraction_config.cell_angle_tol`.
+            b.  Compare crystal orientation (`Experiment_dials_i.crystal.get_A()`) against the reference PDB (potentially by comparing U matrices after aligning B matrices, or by comparing the A matrix to a conventionally set PDB A matrix), using `config.extraction_config.orient_tolerance_deg`.
+            c.  If any PDB consistency check fails, flag this still as failing validation.
+        2.  **Internal Q-Vector Consistency Check:**
+            a.  For a representative subset of (or all) indexed reflections in `Reflections_dials_i`:
+                i.  Calculate `q_bragg` using `Experiment_dials_i.crystal` and the reflection's Miller index.
+                ii. Calculate `q_pixel_recalculated` by converting the reflection's `xyzcal.mm` to pixel coordinates, then to lab coordinates, and finally to a q-vector using `Experiment_dials_i.beam` and `Experiment_dials_i.detector`.
+                iii. Compute `delta_q_mag = |q_bragg - q_pixel_recalculated|`.
+            b.  Calculate statistics on `delta_q_mag` (e.g., mean, median, max).
+            c.  If the mean or max `delta_q_mag` exceeds `q_consistency_tolerance_angstrom_inv`, flag this still as failing validation.
+        3.  **Diagnostic Plot Generation:** Generate and save diagnostic plots similar to those from the original `consistency_checker.py` (q-difference histogram, q-magnitude scatter, q-difference heatmap on detector).
+    *   **Output (per still `i`):**
+        *   `validation_passed_flag`: Boolean.
+        *   Diagnostic metrics (e.g., mean `delta_q_mag`, misorientation_angle_vs_pdb).
+        *   Paths to saved diagnostic plots.
+    *   **Consequence of Failure:** If `validation_passed_flag` is false, the `StillsPipelineOrchestrator` should mark this still appropriately (e.g., `StillProcessingOutcome.status = "FAILURE_GEOMETRY_VALIDATION"`) and skip subsequent processing steps for this still (i.e., skip Module 1.S.3 and Phase 2).
+
+*   **Testing (Module 1.S.1 - including Validation):**
+    *   (Existing tests for DIALS processing adapter remain)
+    *   **Testing for Sub-Module 1.S.1.Validation:**
+        *   **Input:** Sample `Experiment_dials_i`, `Reflections_dials_i`, (optional) mock PDB data, and tolerance configurations.
+        *   **Execution:** Call the Python function(s) implementing the validation logic.
+        *   **Verification (PDB Checks):**
+            *   Assert correct pass/fail status when cell parameters are within/outside tolerance of mock PDB.
+            *   Assert correct pass/fail status when orientation is within/outside tolerance of mock PDB.
+        *   **Verification (Q-Consistency):**
+            *   Assert correct calculation of `q_bragg` and `q_pixel_recalculated` for sample reflections.
+            *   Assert correct pass/fail status based on `delta_q_mag` against `q_consistency_tolerance_angstrom_inv`.
+        *   **Verification (Plots):** Check that plot files are generated if requested (existence check, not necessarily content validation in unit tests).
 
 **Module 1.S.2: Static and Dynamic Pixel Mask Generation**
 *   **Action:** Create a 2D detector mask `Mask_pixel` based on detector properties, known bad regions (beamstop, panel gaps), and potentially dynamic features (hot/cold/negative pixels) observed across a representative subset of, or all, input stills. This mask is considered global for the dataset.
@@ -159,6 +196,8 @@ Initially, these QC reports (plots and text summaries saved to the output direct
 
 **Phase 2: Per-Still Diffuse Intensity Extraction and Pixel-Level Correction**
 *(Corresponds to the `DataExtractor` IDL interface)*
+
+**Note on Configuration:** The existing `cell_length_tol`, `cell_angle_tol`, and `orient_tolerance_deg` tolerances in ExtractionConfig are now used by Module 1.S.1.Validation instead of directly by the DataExtractor. A new field `q_consistency_tolerance_angstrom_inv` may need to be added to the configuration for the |Δq| tolerance in the validation step.
 
 **Module 2.S.1: Pixel-Based Diffuse Data Extraction & Q-Calculation**
 *   **Action:** For each still `i`, iterate through its detector pixels. If a pixel is deemed suitable for diffuse scattering analysis (i.e., it passes `Mask_total_2D_i`), extract its raw intensity and calculate its corresponding q-vector using the specific geometry of still `i`.

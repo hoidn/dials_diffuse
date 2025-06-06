@@ -215,7 +215,18 @@ This document outlines the standard conventions, patterns, and rules for impleme
 *   **Content:** Mermaid sequence diagrams and textual explanations for key scenarios.
 *   **Maintenance:** Update this section when interaction patterns change significantly.
 
-**15. Service/Plugin Registration and Naming (If Applicable)**
+**15. DIALS Integration Best Practices**
+
+*   **Data Type Detection:** Always check CBF headers for `Angle_increment` to determine if data is stills (0°) or sequences (>0°)
+*   **Processing Mode Selection:**
+    *   Stills data (Angle_increment = 0): Use `dials.stills_process` approach
+    *   Sequence data (Angle_increment > 0): Use sequential workflow (import → find_spots → index → integrate)
+*   **PHIL Parameter Validation:** Compare with working DIALS logs to ensure parameter correctness
+*   **API Import Stability:** DIALS Python API imports frequently change; prefer CLI-based adapters for robustness
+*   **Validation Approach:** Use simple pixel-position validation instead of complex Q-vector calculations
+*   **Debugging Strategy:** Always compare with working manual DIALS processing logs as ground truth
+
+**16. Service/Plugin Registration and Naming (If Applicable)**
 
 *   **Naming Constraints:** If registering callables (tools, plugins, services) that will be exposed to external systems (e.g., LLMs, other APIs), ensure their names conform to any constraints imposed by those external systems (e.g., regex for valid characters, length limits).
 *   **Lookup and Invocation:** The key used for registration is typically the identifier used for lookup and invocation.

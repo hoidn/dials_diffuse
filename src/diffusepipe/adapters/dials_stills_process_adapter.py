@@ -20,7 +20,8 @@ class DIALSStillsProcessAdapter:
     
     def __init__(self):
         """Initialize the DIALS stills process adapter."""
-        self._processor = None
+        self._phil_params = None
+        self._extracted_params = None
         
     def process_still(
         self,
@@ -56,20 +57,26 @@ class DIALSStillsProcessAdapter:
                 raise ConfigurationError(f"Image file does not exist: {image_path}")
                 
             # Generate PHIL parameters
+            logger.info("Generating PHIL parameters...")
             phil_params = self._generate_phil_parameters(config)
             log_messages.append(f"Generated PHIL parameters for {image_path}")
             
             # Import DIALS components (delayed import to avoid import errors in tests)
             try:
+                logger.info("Importing DIALS components...")
                 from dials.command_line.stills_process import Processor
                 from dials.util.options import ArgumentParser
                 from dxtbx.model.experiment_list import ExperimentListFactory
+                logger.info("Successfully imported DIALS components")
             except ImportError as e:
                 raise DIALSError(f"Failed to import DIALS components: {e}")
             
-            # Initialize processor
-            self._processor = Processor(phil_params)
-            log_messages.append("Initialized DIALS stills_process Processor")
+            # Store PHIL parameters for later use instead of initializing processor here
+            logger.info("Storing PHIL parameters for processing...")
+            self._phil_params = phil_params
+            self._extracted_params = phil_params.extract()
+            logger.info(f"Extracted PHIL parameters: {type(self._extracted_params)}")
+            log_messages.append("Prepared DIALS processing parameters")
             
             # Perform import
             if base_expt_path and Path(base_expt_path).exists():
@@ -80,7 +87,7 @@ class DIALSStillsProcessAdapter:
                 experiments = self._do_import(image_path)
                 log_messages.append(f"Imported experiment from {image_path}")
             
-            # Process experiments
+            # Process experiments (this will now initialize and run the processor)
             integrated_experiments, integrated_reflections = self._process_experiments(experiments)
             log_messages.append("Completed DIALS stills processing")
             
@@ -98,6 +105,8 @@ class DIALSStillsProcessAdapter:
             error_msg = f"DIALS stills processing failed: {e}"
             log_messages.append(error_msg)
             logger.error(error_msg)
+            logger.error(f"Exception type: {type(e).__name__}")
+            logger.error(f"Exception details: {str(e)}")
             
             if isinstance(e, (DIALSError, ConfigurationError, DataValidationError)):
                 raise
@@ -118,11 +127,13 @@ class DIALSStillsProcessAdapter:
             ConfigurationError: When PHIL generation fails
         """
         try:
-            from dials.util.options import ArgumentParser
+            from dials.command_line.stills_process import phil_scope as master_phil_scope
             from libtbx.phil import parse
             
-            # Start with base PHIL if provided
-            phil_scope = None
+            # Start with DIALS master scope and apply configuration
+            phil_scope = master_phil_scope
+            
+            # Apply base PHIL file if provided
             if config.stills_process_phil_path:
                 phil_path = Path(config.stills_process_phil_path)
                 if not phil_path.exists():
@@ -130,17 +141,33 @@ class DIALSStillsProcessAdapter:
                 
                 with open(phil_path, 'r') as f:
                     phil_content = f.read()
-                phil_scope = parse(phil_content)
+                user_phil = parse(phil_content)
+                phil_scope = phil_scope.fetch(user_phil)
             
             # Apply configuration overrides
             phil_overrides = []
             
             if config.known_unit_cell:
-                phil_overrides.append(f"known_crystal_models.crystal.unit_cell={config.known_unit_cell}")
+                logger.info(f"Adding known unit cell: {config.known_unit_cell}")
+                # Use only indexing.known_symmetry parameters (matching manual workflow)
+                phil_overrides.append(f"indexing.known_symmetry.unit_cell={config.known_unit_cell}")
+                # Use default DIALS tolerances (do not override)
                 
             if config.known_space_group:
-                phil_overrides.append(f"known_crystal_models.crystal.space_group={config.known_space_group}")
+                logger.info(f"Adding known space group: {config.known_space_group}")
+                # Use only indexing.known_symmetry parameters (matching manual workflow)
+                phil_overrides.append(f"indexing.known_symmetry.space_group={config.known_space_group}")
                 
+            # Use explicit spot finding parameters that match working approach
+            phil_overrides.append("spotfinder.filter.min_spot_size=3")
+            phil_overrides.append("spotfinder.threshold.algorithm=dispersion")
+            
+            # Use fft3d indexing method (default for sequences, not stills)
+            phil_overrides.append("indexing.method=fft3d")
+            
+            # Process as sequences, not stills (this is key!)
+            phil_overrides.append("geometry.convert_sequences_to_stills=false")
+            
             if config.spotfinder_threshold_algorithm:
                 phil_overrides.append(f"spotfinder.threshold.algorithm={config.spotfinder_threshold_algorithm}")
                 
@@ -148,16 +175,24 @@ class DIALSStillsProcessAdapter:
                 phil_overrides.append(f"spotfinder.filter.min_spot_area={config.min_spot_area}")
                 
             if config.output_shoeboxes is not None:
-                phil_overrides.append(f"integration.lookup.mask=pixels/shoeboxes" if config.output_shoeboxes else "")
+                if config.output_shoeboxes:
+                    phil_overrides.append("integration.lookup.mask=pixels/shoeboxes")
                 
             if config.calculate_partiality is not None:
                 phil_overrides.append(f"integration.summation.estimate_partiality={config.calculate_partiality}")
             
             # Combine base PHIL with overrides
-            if phil_scope and phil_overrides:
-                phil_scope = phil_scope.fetch(parse("\n".join(phil_overrides)))
-            elif phil_overrides:
-                phil_scope = parse("\n".join(phil_overrides))
+            if phil_overrides:
+                override_text = "\n".join(phil_overrides)
+                logger.info(f"Applying PHIL overrides:\n{override_text}")
+                if phil_scope:
+                    phil_scope = phil_scope.fetch(parse(override_text))
+                else:
+                    phil_scope = parse(override_text)
+            
+            # Debug: show final PHIL structure
+            if phil_scope:
+                logger.debug(f"Final PHIL scope: {phil_scope.as_str()}")
             
             return phil_scope
             
@@ -179,11 +214,9 @@ class DIALSStillsProcessAdapter:
         """
         try:
             from dxtbx.model.experiment_list import ExperimentListFactory
-            from dxtbx.datablock import DataBlockFactory
             
-            # Create experiment list from image
-            datablocks = DataBlockFactory.from_filenames([image_path])
-            experiments = ExperimentListFactory.from_datablocks(datablocks)
+            # Create experiment list directly from image file (newer DIALS approach)
+            experiments = ExperimentListFactory.from_filenames([image_path])
             
             if len(experiments) == 0:
                 raise DIALSError(f"Failed to create experiment from {image_path}")
@@ -195,7 +228,10 @@ class DIALSStillsProcessAdapter:
     
     def _process_experiments(self, experiments: object) -> Tuple[object, object]:
         """
-        Process experiments using DIALS stills_process.
+        Process experiments using sequential DIALS workflow (find_spots -> index -> integrate).
+        
+        This uses the manual DIALS approach that works correctly with oscillation data,
+        rather than stills_process which is designed for true still images.
         
         Args:
             experiments: ExperimentList to process
@@ -207,15 +243,63 @@ class DIALSStillsProcessAdapter:
             DIALSError: When processing fails
         """
         try:
-            if not self._processor:
-                raise DIALSError("Processor not initialized")
+            from dials.array_family import flex
+            from dials.algorithms.spot_finding.factory import SpotFinderFactory
             
-            # This is a simplified version - actual implementation would call
-            # the appropriate processor methods for spot finding, indexing, etc.
-            integrated_experiments = experiments  # Placeholder
-            integrated_reflections = None  # Placeholder
+            logger.info(f"Processing {len(experiments)} experiments using sequential DIALS workflow")
             
-            return integrated_experiments, integrated_reflections
+            # Step 1: Find spots using the working approach parameters
+            logger.info("Step 1: Finding spots...")
+            spot_finder = SpotFinderFactory.from_parameters(
+                self._extracted_params,
+                experiments
+            )
+            reflections = spot_finder.find_spots(experiments)
+            
+            if len(reflections) == 0:
+                raise DIALSError("No spots found during spot finding")
+                
+            logger.info(f"Found {len(reflections)} spots")
+            
+            # Step 2: Index using correct API approach  
+            logger.info("Step 2: Indexing...")
+            
+            # Use the correct indexing factory approach
+            from dials.algorithms.indexing import indexer
+            indexer_obj = indexer.Indexer.from_parameters(
+                reflections, experiments, params=self._extracted_params
+            )
+            indexed_experiments, indexed_reflections = indexer_obj.index()
+            
+            if not indexed_experiments or len(indexed_experiments) == 0:
+                raise DIALSError("DIALS indexing produced no indexed experiments")
+                
+            if not indexed_reflections or len(indexed_reflections) == 0:
+                raise DIALSError("DIALS indexing produced no indexed reflections")
+                
+            logger.info(f"Successfully indexed {len(indexed_reflections)} reflections")
+            
+            # Step 3: Integrate using correct API approach
+            logger.info("Step 3: Integrating...")
+            
+            from dials.algorithms.integration.integrator import create_integrator
+            integrator = create_integrator(self._extracted_params, indexed_experiments, indexed_reflections)
+            integrated_reflections = integrator.integrate()
+            
+            if not integrated_reflections or len(integrated_reflections) == 0:
+                raise DIALSError("DIALS integration produced no integrated reflections")
+            
+            # Add partiality column if missing (needed for diffuse scattering)
+            if not integrated_reflections.has_key('partiality'):
+                logger.info("Adding partiality column for diffuse scattering analysis")
+                integrated_reflections['partiality'] = flex.double(len(integrated_reflections), 1.0)
+            else:
+                logger.info(f"Found existing partiality data for {len(integrated_reflections)} reflections")
+            
+            logger.info(f"Successfully processed via sequential workflow: {len(indexed_experiments)} experiments, "
+                       f"{len(integrated_reflections)} integrated reflections")
+            
+            return indexed_experiments, integrated_reflections
             
         except Exception as e:
             raise DIALSError(f"Failed to process experiments: {e}")
