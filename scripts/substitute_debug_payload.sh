@@ -25,29 +25,28 @@ fi
 # Function to substitute file contents
 substitute_file_contents() {
     local content="$1"
+    local result="$content"
     
-    # Find all {path} patterns and process them
-    while IFS= read -r line; do
-        # Check if line contains {path} pattern
-        if [[ "$line" =~ \{([^}]+)\} ]]; then
-            # Extract the file path
-            local file_path="${BASH_REMATCH[1]}"
-            
-            # Check if file exists
-            if [ -f "$file_path" ]; then
-                # Replace the {path} with XML-wrapped file contents
-                echo "<file path=\"$file_path\">"
-                cat "$file_path"
-                echo "</file>"
-            else
-                echo "<!-- Warning: File '$file_path' not found -->"
-                echo "$line"
-            fi
+    # Find all {path} patterns and replace them
+    while [[ "$result" =~ \{([^}]+)\} ]]; do
+        local file_path="${BASH_REMATCH[1]}"
+        local pattern="{$file_path}"
+        
+        if [ -f "$file_path" ]; then
+            # Create replacement with XML-wrapped file contents
+            local replacement="<file path=\"$file_path\">
+$(cat "$file_path")
+</file>"
+            # Replace the pattern with the file contents
+            result="${result//"$pattern"/"$replacement"}"
         else
-            # Line doesn't contain {path}, output as-is
-            echo "$line"
+            # Replace with warning comment
+            local warning="<!-- Warning: File '$file_path' not found -->"
+            result="${result//"$pattern"/"$warning"}"
         fi
-    done <<< "$content"
+    done
+    
+    echo "$result"
 }
 
 # Read input file content
