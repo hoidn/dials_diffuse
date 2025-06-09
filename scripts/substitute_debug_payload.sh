@@ -25,26 +25,40 @@ fi
 # Function to substitute file contents
 substitute_file_contents() {
     local content="$1"
+    
+    # Use a temporary file to process the content
+    local temp_file=$(mktemp)
+    echo "$content" > "$temp_file"
+    
+    # Find all {path} patterns using grep and process them
+    local patterns=$(grep -o '{[^}]*}' "$temp_file" 2>/dev/null | sort -u || true)
+    
     local result="$content"
     
-    # Find all {path} patterns and replace them
-    while [[ "$result" =~ \{([^}]+)\} ]]; do
-        local file_path="${BASH_REMATCH[1]}"
-        local pattern="{$file_path}"
-        
-        if [ -f "$file_path" ]; then
-            # Create replacement with XML-wrapped file contents
-            local replacement="<file path=\"$file_path\">
+    # Process each unique pattern
+    while IFS= read -r pattern; do
+        if [ -n "$pattern" ]; then
+            # Extract file path by removing { and }
+            local file_path="${pattern#\{}"
+            file_path="${file_path%\}}"
+            
+            if [ -f "$file_path" ]; then
+                # Create replacement with XML-wrapped file contents
+                local replacement="<file path=\"$file_path\">
 $(cat "$file_path")
 </file>"
-            # Replace the pattern with the file contents
-            result="${result//"$pattern"/"$replacement"}"
-        else
-            # Replace with warning comment
-            local warning="<!-- Warning: File '$file_path' not found -->"
-            result="${result//"$pattern"/"$warning"}"
+                # Replace all occurrences of this pattern
+                result="${result//"$pattern"/"$replacement"}"
+            else
+                # Replace with warning comment
+                local warning="<!-- Warning: File '$file_path' not found -->"
+                result="${result//"$pattern"/"$warning"}"
+            fi
         fi
-    done
+    done <<< "$patterns"
+    
+    # Clean up temporary file
+    rm -f "$temp_file"
     
     echo "$result"
 }
