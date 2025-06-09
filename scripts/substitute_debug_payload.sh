@@ -43,12 +43,19 @@ substitute_file_contents() {
             file_path="${file_path%\}}"
             
             if [ -f "$file_path" ]; then
-                # Create replacement with XML-wrapped file contents
-                local replacement="<file path=\"$file_path\">
+                # Check if file is binary
+                if file "$file_path" | grep -q "text"; then
+                    # Create replacement with XML-wrapped file contents
+                    local replacement="<file path=\"$file_path\">
 $(cat "$file_path")
 </file>"
-                # Replace all occurrences of this pattern
-                result="${result//"$pattern"/"$replacement"}"
+                    # Replace all occurrences of this pattern
+                    result="${result//"$pattern"/"$replacement"}"
+                else
+                    # Replace with warning for binary files
+                    local warning="<!-- Warning: File '$file_path' is binary and was skipped -->"
+                    result="${result//"$pattern"/"$warning"}"
+                fi
             else
                 # Replace with warning comment
                 local warning="<!-- Warning: File '$file_path' not found -->"
