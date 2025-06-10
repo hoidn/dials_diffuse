@@ -365,3 +365,17 @@ def create_default_extraction_config() -> ExtractionConfig:
         plot_diagnostics=True,
         verbose=False,
     )
+
+
+# -----------------------------------------------------------------------------
+# Back-compat shim — legacy code and tests expect this symbol to exist
+# -----------------------------------------------------------------------------
+class StillProcessorComponent(StillProcessorAndValidatorComponent):
+    """
+    Legacy alias preserved for external code that still does:
+
+        from diffusepipe.crystallography.still_processing_and_validation \
+            import StillProcessorComponent
+    """
+    # No extra behaviour; everything lives in the parent class.
+    pass
