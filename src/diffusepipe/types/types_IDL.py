@@ -76,6 +76,10 @@ class ExtractionConfig(BaseModel):
     q_consistency_tolerance_angstrom_inv: float = Field(
         description="Tolerance in Å⁻¹ for q-vector consistency checks in geometric model validation"
     )
+    pixel_position_tolerance_px: float = Field(
+        2.0,
+        description="Tolerance in pixels for reflection position consistency checks."
+    )
     pixel_step: int = Field(
         description="Process every Nth pixel (e.g., 1 for all pixels, 2 for every other)"
     )

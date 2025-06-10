@@ -29,8 +29,8 @@ def hkl_to_lab_q(experiment, hkl_vec):
 # --- Helper function to get q_bragg ---
 def get_q_bragg_from_reflection(refl, experiment):
     """
-    Return q_bragg in the DIALS laboratory frame (Å⁻¹) using the
-    crystal model's hkl_to_reciprocal_space_vec method or manual calculation.
+    Return q_bragg in the DIALS laboratory frame (Å⁻¹) using proper 
+    coordinate frame transformation from crystal to laboratory frame.
     """
     try:
         hkl_tuple = refl["miller_index"]
@@ -38,15 +38,11 @@ def get_q_bragg_from_reflection(refl, experiment):
         print("Warning: 'miller_index' column not found in reflection. Cannot calculate q_bragg.")
         return None
     
-    # Option 1: Use the built-in method if available
-    try:
-        q_vec_scitbx = experiment.crystal.hkl_to_reciprocal_space_vec(hkl_tuple)
-        return np.array(q_vec_scitbx.elems)
-    except AttributeError:
-        # Option 2: Fall back to manual calculation if needed
-        hkl_vec = matrix.col(hkl_tuple) 
-        q_bragg_lab_scitbx = hkl_to_lab_q(experiment, hkl_vec)
-        return np.array(q_bragg_lab_scitbx.elems)
+    # Convert hkl to laboratory frame using the helper function
+    # This applies the full CSF*A transformation to get from crystal to lab frame
+    hkl_vec = matrix.col(hkl_tuple) 
+    q_bragg_lab_scitbx = hkl_to_lab_q(experiment, hkl_vec)
+    return np.array(q_bragg_lab_scitbx.elems)
 
 # --- Helper function to calculate q_pixel for a specific pixel (like in pixq.py) ---
 def calculate_q_for_single_pixel(beam_model, panel_model, px_fast_idx, py_slow_idx):
