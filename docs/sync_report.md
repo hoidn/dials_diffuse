@@ -1,297 +1,175 @@
-# Documentation Synchronization Report
+# Documentation Synchronization Report (Reflecting Q-Vector Validation Priority)
 
 ## Executive Summary
 
-This report documents inconsistencies found between plan.md (highest authority) and other documentation/implementation files, along with resolutions made according to the documentation hierarchy.
+This report documents inconsistencies found between `plan.md` (highest authority) and other documentation/implementation files. It now reflects the decision to **prioritize the implementation and debugging of Q-vector based validation** as the primary method for geometric consistency checks, rather than adopting pixel-based validation.
 
 ## Documentation Hierarchy Applied
-1. plan.md (highest authority)
-2. IDL files (*_IDL.md)
-3. Other .md files
-4. Implementation files (.py)
+1.  `plan.md` (highest authority)
+2.  IDL files (`*_IDL.md`)
+3.  Other `.md` files
+4.  Implementation files (`.py`)
 
 ## Inconsistencies Found and Resolutions
 
-### 1. Incomplete plan.md Integration with plan_adaptation.md
+### 1. Incomplete `plan.md` Integration with `plan_adaptation.md`
 
-**Issue:** plan.md has only partially integrated the changes specified in plan_adaptation.md.
-
-**Found:** 
-- Adapter descriptions were added to section 0.6 for dual processing
-- Testing sections were updated for dual processing mode support
-- **However, Module 1.S.0 (CBF Data Type Detection) is completely missing**
-- Module 1.S.1 processing logic still lacks the Route A/Route B structure specified in plan_adaptation.md
-
-**Status:** plan.md does NOT yet fully support both modes as intended - it needs complete integration of plan_adaptation.md specifications.
-
-**Resolution Required:** Complete the plan.md update by adding Module 1.S.0 and updating Module 1.S.1 with the dual routing logic specified in plan_adaptation.md.
+*   **Issue:** `plan.md` has only partially integrated the changes specified in `plan_adaptation.md` for dual DIALS processing modes.
+*   **Found:**
+    *   Adapter descriptions were added to section 0.6 for dual processing.
+    *   Testing sections were updated for dual processing mode support.
+    *   **However, Module 1.S.0 (CBF Data Type Detection) is completely missing from `plan.md`.**
+    *   Module 1.S.1 processing logic in `plan.md` still lacks the Route A/Route B structure specified in `plan_adaptation.md`.
+*   **Status:** `plan.md` does NOT yet fully support both DIALS processing modes as intended by `plan_adaptation.md`.
+*   **Resolution Required:** Complete the `plan.md` update by:
+    1.  Adding Module 1.S.0 (CBF Data Type Detection).
+    2.  Updating Module 1.S.1 processing logic with the dual routing (Route A/B) as specified in `plan_adaptation.md`.
 
 ### 2. Missing Adapter IDL Files
 
-**Issue:** plan.md references adapter components but no IDL files exist for:
-- DIALSStillsProcessAdapter
-- DIALSSequenceProcessAdapter (newly required)
-- DIALSGenerateMaskAdapter
-- DXTBXIOAdapter
+*   **Issue:** `plan.md` references adapter components but no IDL files exist for them.
+*   **Adapters:** `DIALSStillsProcessAdapter`, `DIALSSequenceProcessAdapter`, `DIALSGenerateMaskAdapter`, `DXTBXIOAdapter`.
+*   **Found:** Implementations exist in `src/diffusepipe/adapters/` but lack IDL specifications.
+*   **Resolution Required:** Create IDL files for all adapter components, detailing their contracts.
 
-**Found:** Adapter implementations exist in `src/diffusepipe/adapters/` but lack corresponding IDL specifications.
+### 3. Missing Dual Processing Mode Configuration in `types_IDL.md`
 
-**Resolution Required:** Create IDL files for all adapter components.
-
-### 3. Missing Dual Processing Mode Configuration
-
-**Issue:** types_IDL.md lacks configuration fields for dual processing mode support as specified in plan_adaptation.md.
-
-**Missing Fields:**
-- `force_processing_mode`: Optional[str]
-- `sequence_processing_phil_overrides`: Optional[List[str]]
-- `data_type_detection_enabled`: bool
-
-**Resolution Required:** Update types_IDL.md to include these fields in DIALSStillsProcessConfig.
+*   **Issue:** `types_IDL.md` lacks configuration fields for dual DIALS processing mode support as specified in `plan_adaptation.md`.
+*   **Missing Fields in `DIALSStillsProcessConfig`:**
+    *   `force_processing_mode`: Optional[str]
+    *   `sequence_processing_phil_overrides`: Optional[List[str]]
+    *   `data_type_detection_enabled`: bool
+*   **Resolution Required:** Update `types_IDL.md` (and `types_IDL.py`) to include these fields in `DIALSStillsProcessConfig`.
 
 ### 4. Missing Masking Module IDL Files
 
-**Issue:** plan.md references masking modules but no IDL files exist for:
-- Module 1.S.2: Static and Dynamic Pixel Mask Generation (pixel_mask_generator.py exists)
-- Module 1.S.3: Combined Per-Still Bragg and Pixel Mask Generation (bragg_mask_generator.py exists)
+*   **Issue:** `plan.md` references masking modules (1.S.2, 1.S.3) but no IDL files exist.
+*   **Modules:**
+    *   Module 1.S.2: Static and Dynamic Pixel Mask Generation (`pixel_mask_generator.py` exists)
+    *   Module 1.S.3: Combined Per-Still Bragg and Pixel Mask Generation (`bragg_mask_generator.py` exists)
+*   **Resolution Required:** Create IDL files for these masking components.
 
-**Resolution Required:** Create IDL files for masking components.
+### 5. Missing Scaling and Merging IDL Files (Phase 3 & 4)
 
-### 5. Missing Scaling and Merging IDL Files
+*   **Issue:** `plan.md` defines Modules 3.S.1-3.S.4 and 4.S.1 but no corresponding IDL files exist.
+*   **Resolution Required:** Create IDL specifications for all Phase 3 and 4 components when their development begins.
 
-**Issue:** plan.md defines Modules 3.S.1-3.S.4 and 4.S.1 but no corresponding IDL files exist for:
-- Module 3.S.1: Global Voxel Grid Definition
-- Module 3.S.2: Binning Corrected Diffuse Pixels
-- Module 3.S.3: Relative Scaling
-- Module 3.S.4: Merging Relatively Scaled Data
-- Module 4.S.1: Absolute Scaling
+### 6. Inconsistent DIALS Integration Approach in Documentation
 
-**Resolution Required:** Create IDL specifications for Phase 3 and 4 components.
+*   **Issue:** High-level documentation does not consistently reflect the dual DIALS processing mode.
+*   **Found:**
+    *   `00_START_HERE.md` (lines 98-102) mentions only `dials.stills_process` integration.
+    *   `CLAUDE.md` has been partially updated with sequence processing information.
+*   **Resolution Required:** Update `00_START_HERE.md` section "Integration with DIALS via Python API" to accurately describe the dual processing capability (once Module 1.S.0 and routing are fully planned and implemented).
 
-### 6. Inconsistent DIALS Integration Approach
+### 7. Missing `VoxelAccumulator` Component IDL
 
-**Issue:** Documentation inconsistency between stills-only vs dual processing mode.
+*   **Issue:** `plan.md` Module 3.S.2 references a `VoxelAccumulator` class but no IDL exists.
+*   **Resolution Required:** Create IDL specification for `VoxelAccumulator` when Phase 3 development begins.
 
-**Found:** 
-- 00_START_HERE.md (lines 98-102) mentions only `dials.stills_process` integration
-- CLAUDE.md has been updated with sequence processing information
-- plan.md now supports both modes but Module 1.S.0 is missing
+### 8. Incomplete `StillsPipelineOrchestrator` IDL
 
-**Resolution Required:** Update 00_START_HERE.md section "Integration with DIALS via Python API" to mention both stills and sequence processing capabilities.
-
-### 7. Missing VoxelAccumulator Component
-
-**Issue:** plan.md Module 3.S.2 references a VoxelAccumulator class with HDF5 backend but no IDL exists.
-
-**Resolution Required:** Create IDL specification for VoxelAccumulator.
-
-### 8. Incomplete StillsPipelineOrchestrator IDL
-
-**Issue:** The orchestrator IDL may not reflect the new routing logic for dual processing modes.
-
-**Resolution Required:** Review and update stills_pipeline_orchestrator_IDL.md to include data type detection and routing.
+*   **Issue:** The `stills_pipeline_orchestrator_IDL.md` may not reflect the new routing logic for dual DIALS processing modes.
+*   **Resolution Required:** Review and update `stills_pipeline_orchestrator_IDL.md` to include data type detection and routing logic once Module 1.S.0 is integrated into `plan.md` and its implementation in the orchestrator is defined.
 
 ## Technical Consistency Issues
 
 ### 1. PHIL Parameter Specifications
 
-**Issue:** Critical PHIL parameters for sequence processing are not documented in a central location.
-
-**Found:**
-- plan.md specifies critical parameters in adapter section
-- No PHIL files exist for sequence processing in `src/diffusepipe/config/`
-
-**Resolution Required:** Create sequence processing PHIL configuration files.
+*   **Issue:** Critical PHIL parameters for sequence processing are not documented centrally or organized as configuration files.
+*   **Found:**
+    *   `plan.md` (via `plan_adaptation.md`) specifies critical parameters in the adapter section.
+    *   No dedicated PHIL files for sequence processing steps exist in `src/diffusepipe/config/`.
+*   **Resolution Required:**
+    1.  Create base PHIL files in `src/diffusepipe/config/` for each step of the sequential DIALS workflow (`import.phil`, `find_spots_sequence.phil`, `index_sequence.phil`, `integrate_sequence.phil`).
+    2.  Ensure `DIALSSequenceProcessAdapter` can use these base PHILs and apply overrides.
 
 ### 2. Correction Factor Conventions
 
-**Status:** Correction factor conventions appear consistent across documentation (multiplicative factors).
+*   **Status:** Correction factor conventions appear consistent across documentation (multiplicative factors). **No action needed.**
 
-### 3. Missing Critical PHIL Parameters in Sequence Adapter
+### 3. Missing Critical PHIL Parameters in `DIALSSequenceProcessAdapter` Implementation
 
-**Issue:** The DIALSSequenceProcessAdapter implementation is missing critical PHIL parameters specified in plan.md.
+*   **Issue:** The `DIALSSequenceProcessAdapter` code is missing critical PHIL parameters specified in `plan.md` (via `plan_adaptation.md`).
+*   **Missing Parameters in code:**
+    *   `indexing.method=fft3d`
+    *   `geometry.convert_sequences_to_stills=false`
+*   **Found Parameters in code:**
+    *   `spotfinder.filter.min_spot_size=3` ✓
+    *   `spotfinder.threshold.algorithm=dispersion` ✓
+*   **Resolution Required:** Update `dials_sequence_process_adapter.py` to include *all* critical PHIL parameters as specified in the plan.
 
-**Missing Parameters:**
-- `indexing.method=fft3d` (not implemented)
-- `geometry.convert_sequences_to_stills=false` (not implemented)
+### 4. Testing Strategy Alignment
 
-**Found Parameters:**
-- `spotfinder.filter.min_spot_size=3` ✓ (implemented)
-- `spotfinder.threshold.algorithm=dispersion` ✓ (implemented)
-
-**Resolution Required:** Update dials_sequence_process_adapter.py to include all critical PHIL parameters.
-
-### 3. Testing Strategy Alignment
-
-**Status:** Testing strategies align between 00_START_HERE.md and plan.md (emphasis on integration tests).
+*   **Status:** Testing strategies align between `00_START_HERE.md` and `plan.md` (emphasis on integration tests). **No action needed.**
 
 ## Recommendations
 
-1. **Immediate Actions:**
-   - Complete the Module 1.S.0 addition to plan.md
-   - Create missing IDL files for all adapters
-   - Update types_IDL.md with dual processing configuration
-   - Update 00_START_HERE.md to mention dual processing capability
+1.  **Immediate Actions (Documentation & Planning):**
+    *   **Fully integrate `plan_adaptation.md` into `plan.md`**: Add Module 1.S.0 and the Route A/B logic for Module 1.S.1.
+    *   **Update `plan.md` Validation Logic (Module 1.S.1.Validation)**: Ensure it clearly describes the Q-vector consistency check (`q_bragg` vs. `q_pixel_recalculated`) as the primary method. Remove or mark as secondary/debug-only any references to pixel-based validation in this core plan.
+    *   Update `types_IDL.md` (and `.py`) with dual processing configuration fields.
+    *   Update `00_START_HERE.md` to mention dual DIALS processing capabilities.
+2.  **Immediate Actions (Code & IDLs):**
+    *   **Prioritize fixing `ModelValidator._check_q_consistency`**: Implement the Q-vector comparison correctly, removing the placeholder logic, and ensure it uses `extraction_config.q_consistency_tolerance_angstrom_inv`.
+    *   Create missing IDL files for all existing adapter components (`DIALSStillsProcessAdapter`, `DIALSSequenceProcessAdapter`, `DIALSGenerateMaskAdapter`, `DXTBXIOAdapter`).
+    *   Implement missing PHIL parameters in `DIALSSequenceProcessAdapter`.
+3.  **Short-term Actions:**
+    *   Implement Module 1.S.0 (CBF Data Type Detection) and routing logic in `StillProcessorAndValidatorComponent`.
+    *   Refactor `DIALSStillsProcessAdapter` to correctly wrap the `dials.stills_process.Processor` API and use appropriate PHILs for true stills.
+    *   Create IDL files for masking components (Module 1.S.2, 1.S.3).
+    *   Create base PHIL files for sequence processing steps in `src/diffusepipe/config/`.
+    *   Review and update `stills_pipeline_orchestrator_IDL.md`.
+4.  **Future Actions (as development proceeds):**
+    *   Create IDL files for Phase 3 and 4 components.
+    *   Create IDL for `VoxelAccumulator`.
 
-2. **Short-term Actions:**
-   - Create IDL files for all Phase 3 and 4 components
-   - Create PHIL configuration files for sequence processing
-   - Review and update existing orchestrator IDLs
-
-3. **Documentation Improvements:**
-   - Create a central PHIL parameter reference document
-   - Add sequence processing examples to documentation
-   - Create architecture diagrams showing dual processing flow
-
-4. **Process Improvements:**
-   - Establish a checklist for ensuring IDL files are created when new components are added
-   - Create templates for common IDL patterns (adapters, processors, etc.)
-
-## Critical Implementation Inconsistencies
+## Critical Implementation Inconsistencies (Reflecting Q-Vector Validation Priority)
 
 ### 1. Hardcoded Sequence Processing Contradicts Dual Processing Design
 
-**Issue:** The main processing component contradicts the planned dual processing approach.
+*   **Issue:** The `StillProcessorAndValidatorComponent` hardcodes `DIALSSequenceProcessAdapter`, bypassing the planned dual processing design.
+*   **Resolution Required:** Implement Module 1.S.0 data type detection in `plan.md` and `StillProcessorAndValidatorComponent`, and update the component to use routing logic to select the appropriate DIALS adapter.
 
-**Found:** 
-- `StillProcessorAndValidatorComponent` in `still_processing_and_validation.py` hardcodes `DIALSSequenceProcessAdapter`
-- No data type detection logic exists anywhere in the codebase
-- No routing logic to choose between stills vs sequence processing
-- This completely bypasses the planned Module 1.S.0 data type detection and dual processing design
+### 2. `DIALSStillsProcessAdapter` Implementation Issues
 
-**Impact:** Current implementation processes ALL data as sequences, ignoring the critical distinction between true stills and oscillation data.
+*   **Issue:** The `dials_stills_process_adapter.py` re-implements DIALS internal steps and uses inappropriate sequence-specific PHIL parameters.
+*   **Resolution Required:** Refactor `DIALSStillsProcessAdapter` to be a thin wrapper around the `dials.command_line.stills_process.Processor` Python API, using PHIL parameters suitable for true stills processing.
 
-**Resolution Required:** Implement Module 1.S.0 data type detection and update the processor to use routing logic.
+### 3. Critical Validation Logic Implementation (MAJOR - NOW FOCUSED ON Q-VECTOR)
 
-### 2. DIALSStillsProcessAdapter Implementation Issues
-
-**Issue:** The stills adapter implementation contradicts its intended purpose.
-
-**Found:** 
-- `dials_stills_process_adapter.py` re-implements internal steps rather than using `Processor.process_experiments()` directly
-- Contains sequence-specific PHIL parameters (`geometry.convert_sequences_to_stills=false`, `indexing.method=fft3d`) which are inappropriate for the `dials.stills_process` Python API
-- This suggests confusion about the adapter's role - it should interface with the existing DIALS Python API, not reimplement it
-
-**Resolution Required:** Refactor the stills adapter to properly use `dials.stills_process.Processor` and remove inappropriate sequence-specific parameters.
-
-### 3. Critical Validation Logic Discrepancy (MAJOR)
-
-**Issue:** Major inconsistency between planned validation approach and recommended/implemented approach.
-
-**Found:** 
-- plan.md specifies "Internal Q-Vector Consistency Check" with complex q-vector calculations
-- `06_DIALS_DEBUGGING_GUIDE.md` and `simple_validation_fix.py` recommend "Simple Pixel Validation" (`|observed_px - calculated_px|`)
-- Current `ModelValidator._check_q_consistency` is just a placeholder
-- This represents a fundamental disagreement about validation methodology
-
-**Resolution Required:** Decide on validation approach and update either plan.md or implementation to match. The simpler pixel validation may be more reliable for debugging coordinate system errors.
+*   **Issue:** The Q-vector based validation in `ModelValidator._check_q_consistency` is currently non-functional (uses a placeholder based on `len(reflections)`), and the calculated |Δq| values are too large, indicating issues in the Q-vector calculation path within this method.
+*   **Found:**
+    *   `plan.md` specifies "Internal Q-Vector Consistency Check."
+    *   `06_DIALS_DEBUGGING_GUIDE.md` noted issues with Q-vector calcs and suggested pixel validation as a *fix*, but the current decision is to make Q-vector validation work.
+    *   `simple_validation_fix.py` (pixel-based) is now considered a fallback or debug tool, not the primary validation method.
+    *   `src/diffusepipe/diagnostics/consistency_checker.py` contains functional Q-vector comparison logic for diagnostic purposes.
+*   **Resolution Required:**
+    1.  **Debug and Fix Q-vector calculations within `ModelValidator._check_q_consistency`**: Identify why |Δq| values are large. Compare its calculation logic meticulously with `consistency_checker.py`.
+    2.  **Remove Placeholder**: Once Q-vector calculations are reliable, remove the placeholder logic that bases pass/fail on `len(reflections)`.
+    3.  **Implement Tolerance Check**: Ensure the method compares the mean/max of calculated |Δq| values against `extraction_config.q_consistency_tolerance_angstrom_inv` to determine pass/fail.
+    4.  Update `plan.md` and `checklists/phase1.md` to ensure they clearly describe the Q-vector validation method and its parameters.
 
 ### 4. Incomplete Partiality Generation for Sequence Data
 
-**Issue:** The sequence adapter may not generate partiality values required by downstream modules.
+*   **Issue:** The sequence adapter may not generate partiality values consistently.
+*   **Resolution Required:** Verify partiality generation by `dials.integrate` in sequence mode. If inconsistent, update `plan.md` regarding how partiality is handled/filtered, ensuring the "Universal `P_spot` Strategy" (use as quality filter, not divisor) is clearly documented and applied for data from both processing routes.
 
-**Found:** The adapter validates partiality exists but `dials.integrate` in sequence mode may not generate it consistently.
+## Unresolved Issues Requiring Human Decision (Updated)
 
-**Resolution Required:** Verify partiality generation or implement fallback calculation for sequence processing.
-
-## Unresolved Issues Requiring Human Decision
-
-1. **Module Naming Convention:** Should Module 1.S.0 be inserted, renumbering subsequent modules, or added as Module 0.S.1?
-
-2. **PHIL File Organization:** Should sequence processing PHIL parameters be in separate files or integrated into existing ones?
-
-3. **Adapter IDL Granularity:** Should there be one comprehensive adapter IDL or separate ones for each adapter type?
-
-4. **Data Type Detection Location:** Should data type detection be in the orchestrator, a separate module, or the processor?
-
-5. **Validation Logic Strategy:** Should the project use complex q-vector consistency checks (plan.md) or simpler pixel position validation (debugging guide recommendation)?
-
-6. **Adapter Architecture:** Should adapters directly wrap DIALS APIs or reimplement internal logic for consistency?
+1.  **Module 1.S.0 Numbering:** How to number/name the new CBF Data Type Detection module in `plan.md` (e.g., 0.S.1 or renumber 1.S.x).
+2.  **PHIL File Organization (Sequence PHILs):** Confirm approach for base PHILs in `src/diffusepipe/config/` and how adapters use them.
+3.  **Adapter IDL Granularity:** One comprehensive IDL for all adapters, or separate ones? (Separate is usually clearer).
+4.  **Data Type Detection Location:** Confirm if `StillProcessorAndValidatorComponent` is the right place for Module 1.S.0 logic.
+5.  **(Resolved by new decision)** Validation Logic Strategy: Decision is to fix and use Q-vector validation.
+6.  **Adapter Architecture (Stills Adapter):** Confirm `DIALSStillsProcessAdapter` should be a thin wrapper.
 
 ## Summary
 
-**Major Finding:** The documentation review reveals deeper issues than initially identified. While documentation gaps exist (missing IDL files, incomplete plan.md integration), the more critical problems are:
+**Major Finding:** The project requires a concerted effort to:
+1.  **Implement the planned dual DIALS processing architecture** (Module 1.S.0, routing, correct adapter implementations).
+2.  **Fix and enable the Q-vector based validation** in `ModelValidator` as the primary geometric check.
+3.  Synchronize `plan.md` to accurately reflect these two critical aspects.
+4.  Create the numerous missing IDL files.
 
-1. **Fundamental Implementation Conflicts:** The current code contradicts the planned dual processing design by hardcoding sequence processing for all data.
-
-2. **Validation Methodology Disagreement:** There's a fundamental split between the complex validation approach in plan.md and the simpler approach recommended in debugging documentation.
-
-3. **Adapter Design Confusion:** The stills adapter doesn't properly use the DIALS Python API it's supposed to wrap.
-
-**Priority Actions:**
-1. **CRITICAL:** Resolve the validation logic discrepancy (plan.md vs debugging guide)
-2. **CRITICAL:** Decide whether to implement true dual processing or standardize on sequence processing
-3. **HIGH:** Complete plan.md integration with plan_adaptation.md
-4. **HIGH:** Fix adapter implementations to match their intended roles
-5. **MEDIUM:** Create missing IDL files for proper documentation
-
-The project needs strategic decisions on validation methodology and processing architecture before documentation can be fully synchronized.
-
-----
-
-# decisions 
-**1. DIALS Processing Strategy: Implement Full Dual-Path (Decision 1 - Option A)**
-
-*   **Recommendation:** Commit to implementing the full dual-path strategy as outlined in `plan_adaptation.md`.
-    *   **Rationale:**
-        *   **Correctness:** DIALS tools are specialized. `dials.stills_process` is designed for true stills, while the sequential workflow (import, find_spots, index, integrate) is standard for oscillation/sequence data. Using the correct tool for the data type is more likely to yield optimal results and is more aligned with DIALS best practices.
-        *   **Future-Proofing:** This provides a more flexible architecture if the pipeline needs to handle diverse datasets with varying characteristics.
-        *   **Clarity:** Explicitly handling different data types leads to clearer processing logic and easier debugging.
-    *   **Implementation Steps:**
-        1.  Implement Module 1.S.0 (CBF Data Type Detection) in `StillProcessorAndValidatorComponent`.
-        2.  Refactor `StillProcessorAndValidatorComponent` to instantiate and use the appropriate adapter (`DIALSStillsProcessAdapter` or `DIALSSequenceProcessAdapter`) based on the detected data type.
-        3.  **Critically refactor `DIALSStillsProcessAdapter`**:
-            *   It **must** be a thin wrapper around the `dials.command_line.stills_process.Processor` Python API.
-            *   It should directly call `Processor.process_experiments()`.
-            *   Its `_generate_phil_parameters` method should create PHIL parameters appropriate *only* for the `dials.stills_process` Python API (i.e., remove sequence-specific overrides like `geometry.convert_sequences_to_stills=false` and `indexing.method=fft3d` from *this* adapter, as these are for the CLI sequence).
-        4.  Ensure `DIALSSequenceProcessAdapter` correctly implements all critical PHIL parameters specified in `plan_adaptation.md` for the CLI sequence.
-
-**2. Validation Methodology: Formally Adopt Pixel-Based Validation (Decision 2)**
-
-*   **Recommendation:** Formally adopt the pixel-based validation method (from `simple_validation_fix.py`) as the standard for Module 1.S.1.Validation.
-    *   **Rationale:**
-        *   **Robustness:** The `06_DIALS_DEBUGGING_GUIDE.md` indicates issues with complex Q-vector calculations due to coordinate system errors. Pixel-based validation is simpler and less prone to these specific errors.
-        *   **Pragmatism:** It provides a reliable check on the geometric consistency of indexing. If pixel positions match, the derived Q-vectors are likely consistent.
-        *   **Directly Actionable:** The logic is already available in `simple_validation_fix.py`.
-    *   **Implementation Steps:**
-        1.  Integrate the logic from `simple_validation_fix.py` into `ModelValidator._check_q_consistency` as previously detailed.
-        2.  Update `plan.md` (Module 1.S.1.Validation) and `checklists/phase1.md` (Item 1.B.V.2) to describe this pixel-based method.
-        3.  Add a new configuration field `pixel_position_tolerance_px: float` (e.g., default 2.0) to `ExtractionConfig` in `types_IDL.md` and `types_IDL.py`.
-        4.  Update `create_default_extraction_config()` to include this new field.
-        5.  Ensure `ModelValidator.validate_geometry` uses this new config field when calling `_check_q_consistency`.
-
-**3. Role and Implementation of `DIALSStillsProcessAdapter` (Decision 3 - Follows from Decision 1)**
-
-*   **Recommendation:** Refactor `DIALSStillsProcessAdapter` as described in Decision 1, Point 3.
-    *   **Rationale:** Its current implementation is confusing and doesn't correctly leverage the `dials.stills_process.Processor` API. A clean wrapper is needed for the dual-path strategy.
-
-**4. Partiality Handling for Sequence Data (Decision 4)**
-
-*   **Recommendation:**
-    1.  **Verify Output:** First, confirm whether `dials.integrate` (as called by `DIALSSequenceProcessAdapter`) *can* be configured to reliably output a `"partiality"` column. Standard DIALS integration should be capable of this.
-    2.  **Ensure Configuration:** If it can, ensure `DIALSSequenceProcessAdapter` configures `dials.integrate` to do so.
-    3.  **Adopt Universal `P_spot` Strategy:** Regardless of whether it's from `stills_process` or `sequence_process`, adopt the "Critical Partiality Handling Strategy" from `plan.md` (Module 3.S.3) universally:
-        *   Use the `"partiality"` column (`P_spot`) **primarily as a quality filter** (e.g., `P_spot >= P_min_thresh`).
-        *   **Do not use `P_spot` as a quantitative divisor** for intensity correction in the main diffuse data path or for the primary absolute scaling method (Krogh-Moe/Norman).
-        *   The Wilson plot for *diagnostic* absolute scaling can still consider using high-partiality reflections as an approximation.
-    *   **Rationale:** This simplifies the pipeline by having a consistent (and more cautious) approach to partiality, acknowledging its potential unreliability, especially for true stills and potentially for sequence data if not perfectly modeled. It shifts the burden of absolute scaling to methods that don't directly depend on precise per-reflection partiality correction of diffuse intensities.
-    *   **Documentation:** Clearly document this universal partiality handling strategy in `plan.md`.
-
-**5. PHIL File Organization and Centralization (Decision 5)**
-
-*   **Recommendation:**
-    1.  **Base PHIL Files:** Create base PHIL files in `src/diffusepipe/config/` for each step of the sequential DIALS workflow (`import.phil`, `find_spots_sequence.phil`, `index_sequence.phil`, `integrate_sequence.phil`). These should contain sensible defaults and the critical parameters identified.
-    2.  **Adapter Usage:**
-        *   `DIALSSequenceProcessAdapter` should load these base PHIL files for each respective CLI call and then apply any further specific overrides from `DIALSStillsProcessConfig.sequence_processing_phil_overrides` or hardcoded essential parameters.
-        *   `DIALSStillsProcessAdapter` should also be able to take a `stills_process_phil_path` from `DIALSStillsProcessConfig` as its base, and then programmatically apply specific overrides relevant to the `Processor` API.
-    3.  **Central Reference:** Consider creating a `docs/PHIL_PARAMETERS.md` or similar document that explains the key PHIL parameters used by each adapter and why, referencing the files in `src/diffusepipe/config/`.
-    *   **Rationale:** This improves organization, makes default configurations more transparent, and allows easier modification of base settings without altering adapter code.
-
-**Summary of Rationale for Recommendations:**
-
-*   **Prioritize Correctness and Robustness:** The dual-path DIALS strategy and pixel-based validation aim for more reliable processing based on lessons learned.
-*   **Adhere to DIALS Design:** Using DIALS tools as intended (stills vs. sequence) is generally better.
-*   **Simplify Where Possible:** The universal partiality strategy simplifies one aspect of data correction.
-*   **Improve Maintainability:** Clearer adapter roles and organized PHIL files enhance long-term maintainability.
-*   **Iterative Improvement:** These decisions provide a solid foundation. The pipeline can be further optimized once this baseline is robust.
-
+Addressing these will provide a much more consistent and robust foundation.

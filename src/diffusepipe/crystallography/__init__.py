@@ -1,7 +1,6 @@
 """Crystallography components for diffuse scattering pipeline."""
 
 from .still_processing_and_validation import (
-    StillProcessorComponent,
     StillProcessorAndValidatorComponent,
     ModelValidator,
     ValidationMetrics,
@@ -10,7 +9,6 @@ from .still_processing_and_validation import (
 )
 
 __all__ = [
-    "StillProcessorComponent",
     "StillProcessorAndValidatorComponent", 
     "ModelValidator",
     "ValidationMetrics",

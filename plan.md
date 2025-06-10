@@ -117,37 +117,55 @@ Initially, these QC reports (plots and text summaries saved to the output direct
         *   `Experiment_dials_i` (from main 1.S.1 output).
         *   `Reflections_dials_i` (from main 1.S.1 output).
         *   `external_pdb_path` (if provided in the global pipeline `config.extraction_config.external_pdb_path`).
-        *   Configuration for tolerances (e.g., `config.extraction_config.cell_length_tol`, `config.extraction_config.cell_angle_tol`, `config.extraction_config.orient_tolerance_deg`, and a new tolerance for `|Δq|` differences, e.g., `q_consistency_tolerance_angstrom_inv`).
+        *   Configuration for tolerances (e.g., `config.extraction_config.cell_length_tol`, `config.extraction_config.cell_angle_tol`, `config.extraction_config.orient_tolerance_deg`, and `config.extraction_config.pixel_position_tolerance_px` for pixel-based validation).
     *   **Process:**
         1.  **PDB Consistency Checks (if `external_pdb_path` provided):**
             a.  Compare unit cell parameters (lengths and angles) from `Experiment_dials_i.crystal` against the reference PDB, using `config.extraction_config.cell_length_tol` and `config.extraction_config.cell_angle_tol`.
             b.  Compare crystal orientation (`Experiment_dials_i.crystal.get_A()`) against the reference PDB (potentially by comparing U matrices after aligning B matrices, or by comparing the A matrix to a conventionally set PDB A matrix), using `config.extraction_config.orient_tolerance_deg`.
             c.  If any PDB consistency check fails, flag this still as failing validation.
-        2.  **Internal Q-Vector Consistency Check:**
-            a.  For a representative subset of (or all) indexed reflections in `Reflections_dials_i`:
-                i.  Calculate `q_bragg` using `Experiment_dials_i.crystal` and the reflection's Miller index.
-                ii. Calculate `q_pixel_recalculated` by converting the reflection's `xyzcal.mm` to pixel coordinates, then to lab coordinates, and finally to a q-vector using `Experiment_dials_i.beam` and `Experiment_dials_i.detector`.
-                iii. Compute `delta_q_mag = |q_bragg - q_pixel_recalculated|`.
-            b.  Calculate statistics on `delta_q_mag` (e.g., mean, median, max).
-            c.  If the mean or max `delta_q_mag` exceeds `q_consistency_tolerance_angstrom_inv`, flag this still as failing validation.
+        2.  **Pixel Position Consistency Check:**
+            a.  For a representative subset of indexed reflections in `Reflections_dials_i`:
+                i.  Get observed pixel positions (`xyzobs.px.value`) and calculated pixel positions (`xyzcal.px`).
+                ii. Calculate the Euclidean distance in XY pixel coordinates: `pixel_diff = sqrt((obs_x - calc_x)² + (obs_y - calc_y)²)`.
+                iii. Collect pixel differences for up to 500 randomly selected reflections.
+            b.  Calculate statistics on pixel differences (mean, median, max).
+            c.  If the mean pixel difference exceeds `pixel_position_tolerance_px` OR the max difference exceeds `pixel_position_tolerance_px * 3`, flag this still as failing validation.
         3.  **Diagnostic Plot Generation:** Generate and save diagnostic plots similar to those from the original `consistency_checker.py` (q-difference histogram, q-magnitude scatter, q-difference heatmap on detector).
     *   **Output (per still `i`):**
         *   `validation_passed_flag`: Boolean.
-        *   Diagnostic metrics (e.g., mean `delta_q_mag`, misorientation_angle_vs_pdb).
+        *   Diagnostic metrics (e.g., mean `pixel_diff`, max `pixel_diff`, misorientation_angle_vs_pdb).
         *   Paths to saved diagnostic plots.
+        *   `processing_route_used`: String indicating whether stills or sequence processing was used
     *   **Consequence of Failure:** If `validation_passed_flag` is false, the `StillsPipelineOrchestrator` should mark this still appropriately (e.g., `StillProcessingOutcome.status = "FAILURE_GEOMETRY_VALIDATION"`) and skip subsequent processing steps for this still (i.e., skip Module 1.S.3 and Phase 2).
 
 *   **Testing (Module 1.S.1 - including Validation):**
     *   (Existing tests for DIALS processing adapter remain)
+    *   **Testing for Dual Processing Mode Support:**
+        *   **Data Type Detection Testing:**
+            *   **Input:** CBF files with known `Angle_increment` values (0.0°, 0.1°, 0.5°)
+            *   **Verification:** Assert correct routing to stills vs sequence processing
+            
+        *   **Sequence Processing Adapter Testing:**
+            *   **Input:** CBF file with oscillation data, sequence processing configuration
+            *   **Execution:** Call `DIALSSequenceProcessAdapter.process_still()`
+            *   **Verification:** Assert successful processing and correct output object types
+            
+        *   **Processing Route Integration Testing:**
+            *   **Input:** Mixed dataset with both stills and sequence CBF files
+            *   **Verification:** Assert each file is processed with correct adapter and produces valid results
+            
+        *   **PHIL Parameter Validation Testing:**
+            *   **Input:** Sequence data with incorrect PHIL parameters (default values)
+            *   **Verification:** Assert processing failure, then success with correct parameters
     *   **Testing for Sub-Module 1.S.1.Validation:**
         *   **Input:** Sample `Experiment_dials_i`, `Reflections_dials_i`, (optional) mock PDB data, and tolerance configurations.
         *   **Execution:** Call the Python function(s) implementing the validation logic.
         *   **Verification (PDB Checks):**
             *   Assert correct pass/fail status when cell parameters are within/outside tolerance of mock PDB.
             *   Assert correct pass/fail status when orientation is within/outside tolerance of mock PDB.
-        *   **Verification (Q-Consistency):**
-            *   Assert correct calculation of `q_bragg` and `q_pixel_recalculated` for sample reflections.
-            *   Assert correct pass/fail status based on `delta_q_mag` against `q_consistency_tolerance_angstrom_inv`.
+        *   **Verification (Pixel Position Consistency):**
+            *   Assert correct calculation of pixel position differences for sample reflections.
+            *   Assert correct pass/fail status based on `pixel_diff` against `pixel_position_tolerance_px`.
         *   **Verification (Plots):** Check that plot files are generated if requested (existence check, not necessarily content validation in unit tests).
 
 **Module 1.S.2: Static and Dynamic Pixel Mask Generation**
