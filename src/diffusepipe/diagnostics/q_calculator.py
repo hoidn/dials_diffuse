@@ -1,44 +1,223 @@
-#!/usr/bin/env python
-# calculate_q_per_pixel.py
-# Wrapper for pixq.py to maintain compatibility with run_dials_pipeline.sh
+"""Q-vector calculator for diffuse scattering analysis."""
 
+import logging
 import os
-import sys
-import importlib.util
+from typing import Dict, Any
+import numpy as np
 
-# Find pixq.py in the current directory or the parent directory
-pixq_path = None
-if os.path.exists("pixq.py"):
-    pixq_path = "pixq.py"
-elif os.path.exists("../pixq.py"):
-    pixq_path = "../pixq.py"
-else:
-    print("Error: Could not find pixq.py in current or parent directory.")
-    sys.exit(1)
+from diffusepipe.types.types_IDL import ComponentInputFiles, OperationOutcome
 
-# Load pixq.py as a module
-print(f"Loading q-map generator from: {pixq_path}")
-spec = importlib.util.spec_from_file_location("pixq", pixq_path)
-pixq = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(pixq)
+logger = logging.getLogger(__name__)
 
-# Call the main function from pixq.py
-print("Running q-map generator...")
-pixq.main()
 
-# Call the verification function if available
-try:
-    # Test for a specific pixel (these coordinates match the defaults in pixq.py)
-    test_beam_model, test_detector_model = pixq.load_dials_models(pixq.EXPERIMENT_FILE)
-    panel_to_test_idx = 0  # Test the first panel (index 0)
+class QValueCalculator:
+    """
+    Calculator for generating per-pixel q-vector maps from DIALS experiment geometry.
     
-    if panel_to_test_idx < len(test_detector_model):
-        panel_model_for_test = test_detector_model[panel_to_test_idx]
-        q_verified = pixq.verify_single_pixel_q(
-            test_beam_model, panel_model_for_test, panel_to_test_idx, 2342, 30
-        )
-        print("Verification complete.")
-except (AttributeError, NameError) as e:
-    print(f"Note: Could not run verification function: {e}")
+    This class implements the q-vector calculation as specified in q_calculator_IDL.md,
+    computing q-vectors for each detector pixel based on DIALS experiment geometry.
+    """
 
-print("q-map generation completed successfully.")
+    def __init__(self):
+        """Initialize the QValueCalculator."""
+        pass
+
+    def calculate_q_map(
+        self, inputs: ComponentInputFiles, output_prefix_for_q_maps: str
+    ) -> OperationOutcome:
+        """
+        Generate q-vector maps for each detector pixel.
+
+        Args:
+            inputs: Input files containing DIALS experiment path
+            output_prefix_for_q_maps: Prefix for output q-map files
+
+        Returns:
+            OperationOutcome with success/failure status and output artifact paths
+        """
+        try:
+            # Validate inputs
+            if not inputs.dials_expt_path:
+                return OperationOutcome(
+                    status="FAILURE",
+                    error_code="InputFileError",
+                    message="DIALS experiment path not provided in inputs"
+                )
+
+            if not os.path.exists(inputs.dials_expt_path):
+                return OperationOutcome(
+                    status="FAILURE",
+                    error_code="InputFileError",
+                    message=f"DIALS experiment file not found: {inputs.dials_expt_path}"
+                )
+
+            logger.info(f"Loading DIALS experiment from: {inputs.dials_expt_path}")
+
+            # Load DIALS experiment
+            experiment_list = self._load_dials_experiment(inputs.dials_expt_path)
+            if len(experiment_list) == 0:
+                return OperationOutcome(
+                    status="FAILURE",
+                    error_code="DIALSModelError",
+                    message="No experiments found in DIALS experiment file"
+                )
+
+            # Use the first experiment
+            experiment = experiment_list[0]
+            beam_model = experiment.beam
+            detector_model = experiment.detector
+
+            logger.info(f"Calculating q-maps for {len(detector_model)} detector panels")
+
+            # Calculate q-vectors for all panels
+            output_paths = {}
+            
+            for panel_idx, panel in enumerate(detector_model):
+                logger.info(f"Processing panel {panel_idx}")
+                
+                qx_map, qy_map, qz_map = self._calculate_panel_q_vectors(
+                    beam_model, panel
+                )
+                
+                # Generate output file paths
+                if len(detector_model) > 1:
+                    # Multi-panel detector - include panel index
+                    qx_path = f"{output_prefix_for_q_maps}_panel{panel_idx}_qx.npy"
+                    qy_path = f"{output_prefix_for_q_maps}_panel{panel_idx}_qy.npy"
+                    qz_path = f"{output_prefix_for_q_maps}_panel{panel_idx}_qz.npy"
+                else:
+                    # Single panel detector
+                    qx_path = f"{output_prefix_for_q_maps}_qx.npy"
+                    qy_path = f"{output_prefix_for_q_maps}_qy.npy"
+                    qz_path = f"{output_prefix_for_q_maps}_qz.npy"
+                
+                # Save q-vector maps
+                np.save(qx_path, qx_map)
+                np.save(qy_path, qy_map)
+                np.save(qz_path, qz_map)
+                
+                # Store paths in output artifacts
+                if len(detector_model) > 1:
+                    output_paths[f"panel{panel_idx}_qx_map_path"] = qx_path
+                    output_paths[f"panel{panel_idx}_qy_map_path"] = qy_path
+                    output_paths[f"panel{panel_idx}_qz_map_path"] = qz_path
+                else:
+                    output_paths["qx_map_path"] = qx_path
+                    output_paths["qy_map_path"] = qy_path
+                    output_paths["qz_map_path"] = qz_path
+                
+                logger.info(f"Saved q-maps for panel {panel_idx}: {qx_path}, {qy_path}, {qz_path}")
+
+            return OperationOutcome(
+                status="SUCCESS",
+                message=f"Successfully generated q-maps for {len(detector_model)} panels",
+                output_artifacts=output_paths
+            )
+
+        except ImportError as e:
+            logger.error(f"Failed to import DIALS/DXTBX modules: {e}")
+            return OperationOutcome(
+                status="FAILURE",
+                error_code="DIALSModelError",
+                message=f"Failed to import DIALS/DXTBX modules: {e}"
+            )
+        except Exception as e:
+            logger.error(f"Q-vector calculation failed: {e}")
+            if "Input" in str(e) or "not found" in str(e).lower():
+                error_code = "InputFileError"
+            elif "write" in str(e).lower() or "permission" in str(e).lower():
+                error_code = "OutputWriteError"
+            elif "calculation" in str(e).lower():
+                error_code = "CalculationError"
+            else:
+                error_code = "DIALSModelError"
+            
+            return OperationOutcome(
+                status="FAILURE",
+                error_code=error_code,
+                message=f"Q-vector calculation failed: {e}"
+            )
+
+    def _load_dials_experiment(self, expt_path: str):
+        """
+        Load DIALS experiment from file.
+        
+        Args:
+            expt_path: Path to DIALS experiment file
+            
+        Returns:
+            DIALS ExperimentList object
+            
+        Raises:
+            ImportError: If DIALS/DXTBX modules cannot be imported
+            Exception: If experiment file cannot be loaded
+        """
+        try:
+            from dxtbx.model import ExperimentList
+        except ImportError:
+            raise ImportError("Failed to import dxtbx.model.ExperimentList")
+        
+        try:
+            experiment_list = ExperimentList.from_file(expt_path)
+            return experiment_list
+        except Exception as e:
+            raise Exception(f"Failed to load DIALS experiment from {expt_path}: {e}")
+
+    def _calculate_panel_q_vectors(self, beam_model, panel):
+        """
+        Calculate q-vectors for all pixels in a detector panel.
+        
+        Args:
+            beam_model: DIALS Beam object
+            panel: DIALS Panel object
+            
+        Returns:
+            Tuple of (qx_map, qy_map, qz_map) as NumPy arrays
+        """
+        # Get panel dimensions
+        image_size = panel.get_image_size()  # (fast_scan_size, slow_scan_size)
+        
+        # Initialize q-vector arrays
+        # Array dimensions are (slow_scan, fast_scan) to match NumPy convention
+        qx_map = np.zeros((image_size[1], image_size[0]), dtype=np.float64)
+        qy_map = np.zeros((image_size[1], image_size[0]), dtype=np.float64)
+        qz_map = np.zeros((image_size[1], image_size[0]), dtype=np.float64)
+        
+        # Get beam parameters
+        wavelength = beam_model.get_wavelength()  # Angstroms
+        k_magnitude = 2 * np.pi / wavelength  # |k| = 2π/λ
+        
+        # Get incident beam vector (k_in)
+        s0 = beam_model.get_s0()  # This is k_in / |k_in|
+        k_in = np.array([s0[0], s0[1], s0[2]]) * k_magnitude
+        
+        logger.debug(f"Panel image size: {image_size}")
+        logger.debug(f"Wavelength: {wavelength} Å")
+        logger.debug(f"k magnitude: {k_magnitude} Å⁻¹")
+        
+        # Iterate through all pixels
+        for slow_idx in range(image_size[1]):  # slow scan (rows)
+            for fast_idx in range(image_size[0]):  # fast scan (columns)
+                # Get lab coordinate of pixel center
+                lab_coord = panel.get_pixel_lab_coord((fast_idx, slow_idx))
+                
+                # Calculate scattered beam vector (k_out)
+                # Direction from sample origin (0,0,0) to pixel
+                scatter_direction = np.array([lab_coord[0], lab_coord[1], lab_coord[2]])
+                scatter_direction_norm = scatter_direction / np.linalg.norm(scatter_direction)
+                k_out = scatter_direction_norm * k_magnitude
+                
+                # Calculate scattering vector q = k_out - k_in
+                q_vector = k_out - k_in
+                
+                # Store components
+                qx_map[slow_idx, fast_idx] = q_vector[0]
+                qy_map[slow_idx, fast_idx] = q_vector[1]
+                qz_map[slow_idx, fast_idx] = q_vector[2]
+        
+        logger.info(f"Calculated q-vectors for {image_size[0]} x {image_size[1]} pixels")
+        logger.debug(f"Q-vector ranges: qx=[{qx_map.min():.4f}, {qx_map.max():.4f}], "
+                    f"qy=[{qy_map.min():.4f}, {qy_map.max():.4f}], "
+                    f"qz=[{qz_map.min():.4f}, {qz_map.max():.4f}] Å⁻¹")
+        
+        return qx_map, qy_map, qz_map
