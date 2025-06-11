@@ -22,7 +22,7 @@ from .bragg_mask_generator import (
 __all__ = [
     # Pixel mask generation
     "PixelMaskGenerator",
-    "StaticMaskParams", 
+    "StaticMaskParams",
     "DynamicMaskParams",
     "Circle",
     "Rectangle",

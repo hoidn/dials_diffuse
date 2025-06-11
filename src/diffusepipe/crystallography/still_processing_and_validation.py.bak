@@ -22,6 +22,7 @@ from diffusepipe.adapters.dials_stills_process_adapter import (
 )
 from diffusepipe.utils.cbf_utils import get_angle_increment_from_cbf
 from diffusepipe.crystallography.q_consistency_checker import QConsistencyChecker
+from diffusepipe.exceptions import ConfigurationError, DIALSError, DataValidationError
 from diffusepipe.types.types_IDL import (
     DIALSStillsProcessConfig,
     ExtractionConfig,
@@ -47,6 +48,7 @@ class ValidationMetrics:
         self.median_delta_q_mag: Optional[float] = None
         self.misorientation_angle_vs_pdb: Optional[float] = None
         self.num_reflections_tested: int = 0
+
 
     # ------------------------------------------------------------------
     def to_dict(self) -> Dict[str, Any]:
@@ -120,6 +122,16 @@ class ModelValidator:
         metrics.max_delta_q_mag = stats.get("max")
         metrics.median_delta_q_mag = stats.get("median")
         metrics.num_reflections_tested = stats.get("count", 0)
+
+        # --------------- Diagnostics ---------------
+        if output_dir:
+            try:
+                metrics.plot_paths = self._generate_diagnostic_plots(
+                    stats, external_pdb_path, output_dir
+                )
+                metrics.validation_plots_generated = True
+            except Exception as exc:  # pragma: no cover – best‑effort helper
+                logger.warning("Plot generation failed: %s", exc)
 
         # --------------- Overall pass/fail ----------
         validation_passed = (
@@ -220,11 +232,12 @@ class ModelValidator:
     # ------------------------------------------------------------------
     @staticmethod
     def _calculate_misorientation_static(
-        A1_matrix_sqr: Any, A2_matrix_sqr: Any
+        A1_matrix_sqr: "matrix.sqr", A2_matrix_sqr: "matrix.sqr"
     ) -> float:
         """Calculate misorientation angle between two A-matrices (UB matrices)."""
 
         from scitbx import matrix
+        import numpy as np
 
         def angle_between_orientations(
             a_mat: "matrix.sqr", b_mat: "matrix.sqr"
@@ -253,6 +266,63 @@ class ModelValidator:
     ) -> Tuple[bool, Dict[str, float]]:
         """Perform Q-vector consistency check by comparing model-derived q-vectors with those recalculated from observed pixel positions. Delegates to QConsistencyChecker."""
         return self.q_checker.check_q_consistency(experiment, reflections, tolerance)
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _generate_diagnostic_plots(
+        q_stats: Dict[str, float],
+        pdb_path: Optional[str],
+        output_dir: str,
+    ) -> Dict[str, str]:
+        """Create very simple summary plots – keeps dependencies light."""
+
+        plot_paths: Dict[str, str] = {}
+        try:
+            import matplotlib
+
+            matplotlib.use("Agg")  # headless
+            import matplotlib.pyplot as plt
+
+            output = Path(output_dir)
+            output.mkdir(parents=True, exist_ok=True)
+
+            # --- Δq histogram ----------------------------------------
+            if q_stats.get("count", 0) > 0 and q_stats.get("mean") is not None:
+                # Simulate a tiny histogram with mean/median/max markers
+                fig, ax = plt.subplots(figsize=(6, 4))
+                # Fake distribution: we only have summary stats, so just plot a bar
+                ax.bar(0, q_stats["mean"], width=0.4, label="mean |Δq|")
+                ax.bar(0.6, q_stats["max"], width=0.4, label="max |Δq|")
+                ax.set_ylabel("Å⁻¹")
+                ax.set_xticks([])
+                ax.set_title("Q‑vector discrepancy summary")
+                ax.legend()
+                out_path = output / "q_consistency_summary.png"
+                plt.tight_layout()
+                plt.savefig(out_path, dpi=120)
+                plt.close(fig)
+                plot_paths["q_consistency"] = str(out_path)
+
+            # --- PDB placeholder -------------------------------------
+            if pdb_path:
+                fig, ax = plt.subplots(figsize=(6, 4))
+                ax.text(
+                    0.5,
+                    0.5,
+                    "PDB comparison\nnot yet implemented",
+                    ha="center",
+                    va="center",
+                    transform=ax.transAxes,
+                )
+                ax.set_axis_off()
+                out_path = output / "pdb_comparison_placeholder.png"
+                plt.savefig(out_path, dpi=120)
+                plt.close(fig)
+                plot_paths["pdb_consistency"] = str(out_path)
+
+        except ImportError:
+            logger.warning("matplotlib not available – skipping diagnostic plots")
+        return plot_paths
 
 
 # -----------------------------------------------------------------------------

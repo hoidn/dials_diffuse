@@ -11,7 +11,8 @@ module src.diffusepipe.extraction {
         // Preconditions:
         // - `inputs.cbf_image_path` must point to an existing, readable CBF image file.
         // - `inputs.dials_expt_path` must point to an existing, readable DIALS experiment list JSON file.
-        // - `inputs.bragg_mask_path` must point to an existing, readable pickle file containing the Bragg mask (typically a NumPy boolean array).
+        // - If `mask_total_2d` is not provided, `inputs.bragg_mask_path` must point to an existing, readable pickle file containing the Bragg mask.
+        // - If `mask_total_2d` is provided, it must be a tuple of boolean arrays (one per detector panel) representing the combined mask (Mask_pixel AND NOT BraggMask_2D_raw_i).
         // - If `inputs.external_pdb_path` is provided, it must be an existing, readable PDB file.
         // - `config` must be a valid `ExtractionConfig` object.
         // - The directory for `output_npz_path` must be writable.
@@ -38,11 +39,11 @@ module src.diffusepipe.extraction {
         //       i. **Q-Vector Calculation:** Calculates the scattering vector `q` (components qx, qy, qz) for the pixel center using the DIALS `Experiment` geometry (detector panel, beam vector).
         //       ii. **Intensity & Initial Error:** Reads raw intensity $I_{raw}$. Applies `config.gain`. Initial sigma $\sigma_{raw} = \sqrt{I_{raw} \cdot \text{gain}}$ (assuming Poisson statistics).
         //       iii. **Corrections (and error propagation) using DIALS API and Custom Calculations:**
-        //            - **Lorentz-Polarization (LP) correction:** Obtained via adapter to DIALS `dials.algorithms.integration.Corrections` class using the Experiment model for the current still. Handles complex effects like parallax internally.
-        //            - **Detector Quantum Efficiency (QE) correction:** Obtained via adapter to DIALS `dials.algorithms.integration.Corrections` class.
-        //            - **Solid angle correction:** Custom calculation based on pixel geometry and detector properties (not available from DIALS Corrections for arbitrary diffuse pixels).
-        //            - **Air attenuation correction:** Custom calculation based on beam path length and wavelength (if parameters provided and significant).
-        //            All correction factors are converted to multipliers and combined into `TotalCorrection_mult(p)`. Each correction factor is applied to $I$ and its effect propagated to $\sigma_I$.
+        //            - **Lorentz-Polarization (LP) correction:** Obtained via DIALS `dials.algorithms.integration.Corrections` class. LP correction can be enabled/disabled via `config.lp_correction_enabled`. Returns divisors which are converted to multipliers (LP_mult = 1/LP_divisor).
+        //            - **Detector Quantum Efficiency (QE) correction:** Obtained via DIALS `dials.algorithms.integration.Corrections` class. Returns multipliers directly.
+        //            - **Solid angle correction:** Custom calculation: SA_mult = 1/((pixel_area × cos_θ) / r²) where θ is angle between panel normal and scattered beam direction.
+        //            - **Air attenuation correction:** Custom calculation using Beer-Lambert law: Air_mult = 1/exp(-μ_air × path_length). Uses configurable air temperature and pressure via `config.air_temperature_k` and `config.air_pressure_atm`.
+        //            All correction factors are combined as multipliers: `TotalCorrection_mult = LP_mult × QE_mult × SA_mult × Air_mult`. Error propagation assumes correction factors have negligible uncertainty: σ_corrected = σ_initial × TotalCorrection_mult.
         //       iv. **Background Subtraction (and error propagation):**
         //            - If `config.subtract_measured_background_path` is provided: Load background map, subtract value for current pixel. Add variance of background to current $\sigma_I^2$.
         //            - Else if `config.subtract_constant_background_value` is provided: Subtract constant. (Error propagation for constant subtraction is typically zero unless constant has uncertainty).
@@ -64,7 +65,8 @@ module src.diffusepipe.extraction {
         src.diffusepipe.types.OperationOutcome extract_from_still(
             src.diffusepipe.types.ComponentInputFiles inputs,
             src.diffusepipe.types.ExtractionConfig config,
-            string output_npz_path
+            string output_npz_path,
+            optional tuple mask_total_2d
         );
     }
 }

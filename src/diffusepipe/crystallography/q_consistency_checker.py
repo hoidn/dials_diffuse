@@ -48,7 +48,9 @@ class QConsistencyChecker:
         # Ensure required columns exist --------------------------------
         required_cols = {"miller_index", "panel", "s1"}
         if not required_cols.issubset(reflections):
-            logger.warning("Reflection table missing required columns %s", required_cols)
+            logger.warning(
+                "Reflection table missing required columns %s", required_cols
+            )
             return False, {"count": 0, "mean": None, "median": None, "max": None}
 
         # Prefer observed pixel centroid columns ------------------------

@@ -9,7 +9,7 @@ from .still_processing_and_validation import (
 )
 
 __all__ = [
-    "StillProcessorAndValidatorComponent", 
+    "StillProcessorAndValidatorComponent",
     "ModelValidator",
     "ValidationMetrics",
     "create_default_config",

@@ -25,27 +25,30 @@ module src.diffusepipe.orchestration {
         // - For each `cbf_path` in `cbf_image_paths`:
         //   1. Creates a unique working subdirectory inside `root_output_directory` (e.g., named using the CBF filename).
         //   2. Initializes a `StillProcessingOutcome` for the current image.
-        //   3. **DIALS Processing Stage (using `dials.stills_process` Python API via an adapter):**
-        //      a. Initializes a DIALS `Processor` (from `dials.command_line.stills_process`) adapter with the PHIL parameters derived from `config.dials_stills_process_config`.
-        //      b. The adapter imports the `cbf_path` into a DIALS `ExperimentList`.
-        //      c. The adapter invokes the `Processor`'s main method (e.g., `process_experiments`) on the imported `ExperimentList`. This internally handles spot finding, indexing, refinement, and integration (including partiality calculation and optional shoebox output).
-        //      d. The adapter logs relevant command-equivalent information (e.g., PHIL parameters used), captures DIALS logs, and monitors for successful completion.
-        //      e. If the `dials.stills_process` adapter reports failure, sets `StillProcessingOutcome.status` to "FAILURE_DIALS", records details in `dials_outcome`, logs to summary, and proceeds to the next CBF file.
-        //      f. If successful, the adapter retrieves the `integrated.expt` (containing `Crystal_i`) and `integrated.refl` (containing Bragg spots, partialities, and optionally shoeboxes) as DIALS Python objects. Note: Partialities from `dials.stills_process` are used for DIALS integration quality but NOT as quantitative divisors in subsequent scaling (due to accuracy limitations for true stills).
-        //   4. **Data Extraction Stage:**
+        //   3. **Data Type Detection (Module 1.S.0):**
+        //      a. Determines the `processing_route` ("stills" or "sequence") based on the CBF header of `cbf_path` and `config.dials_stills_process_config.force_processing_mode`.
+        //      b. Selects the appropriate DIALS adapter (`DIALSStillsProcessAdapter` or `DIALSSequenceProcessAdapter`) based on the `processing_route`.
+        //   4. **DIALS Processing Stage (using the selected adapter):**
+        //      a. Initializes the selected DIALS adapter with the PHIL parameters derived from `config.dials_stills_process_config`.
+        //      b. The adapter imports the `cbf_path` into a DIALS `ExperimentList` (or handles equivalent for CLI).
+        //      c. The adapter invokes its main processing method. This internally handles spot finding, indexing, refinement, and integration.
+        //      d. The adapter logs relevant command-equivalent information, captures DIALS logs, and monitors for successful completion.
+        //      e. If the DIALS adapter reports failure, sets `StillProcessingOutcome.status` to "FAILURE_DIALS", records details in `dials_outcome`, logs to summary, and proceeds to the next CBF file.
+        //      f. If successful, the adapter retrieves the `integrated.expt` (containing `Crystal_i`) and `integrated.refl` (containing Bragg spots, partialities, and optionally shoeboxes) as DIALS Python objects.
+        //   5. **Data Extraction Stage:**
         //      a. If all DIALS steps succeeded:
         //         i. Prepares `ComponentInputFiles` (paths to `cbf_path`, `indexed_refined_detector.expt`, `indexed_refined_detector.refl`, `bragg_mask.pickle`, and `config.extraction_config.external_pdb_path` if specified in `config`).
         //         ii. Defines `output_npz_path` within the working directory.
         //         iii. Calls `DataExtractor.extract_from_still(inputs, config.extraction_config, output_npz_path)`.
         //         iv. Updates `StillProcessingOutcome.extraction_outcome` and `StillProcessingOutcome.status`.
-        //   5. **Diagnostics Stage (Conditional):**
+        //   6. **Diagnostics Stage (Conditional):**
         //      a. If extraction was successful (`extraction_outcome.status == "SUCCESS"`) and `config.run_consistency_checker` is true:
         //         i. Calls `ConsistencyChecker.check_q_consistency(inputs_for_consistency, config.extraction_config.verbose, working_directory)`.
         //         ii. Updates `StillProcessingOutcome.consistency_outcome`.
         //      b. If extraction was successful and `config.run_q_calculator` is true:
         //         i. Calls `QValueCalculator.calculate_q_map(inputs_for_qcalc, output_prefix_in_working_dir)`.
         //         ii. Updates `StillProcessingOutcome.q_calc_outcome`.
-        //   6. Appends the final `StillProcessingOutcome` for the current image to the list and writes a summary to the main log.
+        //   7. Appends the final `StillProcessingOutcome` for the current image to the list and writes a summary to the main log.
         // - Returns the list of all `StillProcessingOutcome` objects.
         // @raises_error(condition="InvalidConfiguration", description="The provided `StillsPipelineConfig` is invalid or essential global settings are missing.")
         // @raises_error(condition="DIALSEnvironmentError", description="DIALS command-line tools are not found or the DIALS environment is not correctly sourced.")
