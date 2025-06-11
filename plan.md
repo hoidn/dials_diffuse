@@ -36,6 +36,25 @@
     *   A helper in `diffusepipe.corrections` (`apply_corrections(raw_I, lp_mult, qe_mult, sa_mult, air_mult)`) centralises this logic and is covered by a regression test using an analytic pixel at 45 °.  The rest of the plan therefore speaks only of multipliers.
 *   **0.6 Adapter Layer:** External DIALS/CCTBX/DXTBX Python API calls (e.g., to `dials.stills_process` Python components, scaling framework components, CCTBX utilities) **shall be wrapped** in a thin, project-specific adapter layer residing within the `diffusepipe` package. This adapter layer will be unit-tested against expected behavior based on DIALS/CCTBX documentation and observed outputs, and the main pipeline logic will call these adapters. This localizes changes if the external API evolves and simplifies mocking for higher-level tests.
 
+**0.6 Adapter Layer Enhancement for Dual Processing Modes:**
+External DIALS processing **shall be wrapped** in two complementary adapter implementations:
+
+*   **`DIALSStillsProcessAdapter`:** Wraps `dials.stills_process` Python API for true still images (Angle_increment = 0.0°).
+*   **`DIALSSequenceProcessAdapter`:** Implements CLI-based sequential workflow for oscillation data (Angle_increment > 0.0°).
+
+Both adapters **must** produce identical output interfaces (`Experiment` and `reflection_table` objects) to ensure downstream compatibility. The choice between adapters is determined by Module 1.S.0 data type detection.
+
+**Critical PHIL Parameters for Sequence Processing (to be used by `DIALSSequenceProcessAdapter`):**
+*   `spotfinder.filter.min_spot_size=3` (not default 2)
+*   `spotfinder.threshold.algorithm=dispersion` (not default)
+*   `indexing.method=fft3d` (not fft1d)
+*   `geometry.convert_sequences_to_stills=false` (preserve oscillation)
+
+**0.7 Geometric Validation Strategy Decision:**
+The project follows **Q-vector consistency checking as the primary geometric validation method** for Module 1.S.1.Validation. This approach compares `q_model` (derived from DIALS-refined crystal models and Miller indices) with `q_observed` (recalculated from observed pixel coordinates) using the tolerance `q_consistency_tolerance_angstrom_inv`. 
+
+Pixel-based position validation (`|observed_px - calculated_px|`) serves as a secondary diagnostic tool or simpler fallback method when Q-vector validation proves persistently problematic, but is **not** the primary planned validation approach. This decision ensures robust geometric validation while maintaining compatibility with crystallographic conventions.
+
 ---
 
 **0.X. Intermediate Quality Control (QC) Checkpoints**
@@ -106,25 +125,38 @@ Initially, these QC reports (plots and text summaries saved to the output direct
 *   **Input (per still `i` or a small batch of stills):**
     *   File path(s) to raw still image(s).
     *   Base experimental geometry information (`DE_base`), potentially provided as a reference DIALS `.expt` file or constructed programmatically. This includes common detector and source models.
-    *   Configuration for `dials.stills_process` (e.g., an instance of `DIALSStillsProcessConfig` from `types_IDL.md`). The adapter layer will translate this into PHIL parameters for `dials.stills_process`. This configuration must ensure:
+    *   Configuration for DIALS processing (e.g., an instance of `DIALSStillsProcessConfig` from `types_IDL.md`). The adapter layer will translate this into PHIL parameters for the selected DIALS workflow. This configuration must ensure:
         *   Calculation and output of reflection partialities (critical).
         *   Saving of shoeboxes if Option B in Module 1.S.3 (Bragg mask from shoeboxes) is chosen.
         *   Appropriate spot finding, indexing, refinement, and integration strategies for the specific still dataset.
         *   Error handling settings (e.g., `squash_errors = False` for debugging).
     *   Known unit cell parameters and space group information can be part of `DIALSStillsProcessConfig` and passed as hints to `dials.stills_process`.
 *   **Process (Orchestrated per still `i` or small batch by the `StillsPipelineOrchestrator` component, which uses Module 1.S.0 to select and call the appropriate adapter):**
-    To efficiently process datasets containing numerous still images, the `StillsPipelineOrchestrator` **shall implement parallel execution** for this module. This will typically involve distributing the processing of individual stills (or small, independent chunks of stills) across multiple CPU cores, for example, using Python's `multiprocessing.Pool`. Each worker process will execute the full adapter logic for `dials.stills_process.Processor` (points 1-4 below) for its assigned still(s). The orchestrator will be responsible for managing this parallel execution, collecting results (including success/failure status and paths to key output files written to still-specific working directories), and aggregating logs or error messages.
-    The subsequent numbered steps (1-4) then describe the logic performed *within each parallel worker* or for each still:
-    1.  The adapter initializes a `dials.command_line.stills_process.Processor` instance. It constructs the necessary PHIL parameters from the input `DIALSStillsProcessConfig` (e.g., by merging a base PHIL file with explicitly provided parameters).
+    To efficiently process datasets containing numerous still images, the `StillsPipelineOrchestrator` **shall implement parallel execution** for this module. This will typically involve distributing the processing of individual stills (or small, independent chunks of stills) across multiple CPU cores, for example, using Python's `multiprocessing.Pool`. Each worker process will execute the full adapter logic for its assigned still(s). The orchestrator will be responsible for managing this parallel execution, collecting results (including success/failure status and paths to key output files written to still-specific working directories), and aggregating logs or error messages.
+    The subsequent numbered steps describe the logic performed *within each parallel worker* or for each still:
+
+    **Route A: True Stills Processing (Angle_increment = 0.0°):**
+    1.  The `DIALSStillsProcessAdapter` initializes a `dials.command_line.stills_process.Processor` instance. It constructs the necessary PHIL parameters from the input `DIALSStillsProcessConfig`.
     2.  The adapter calls `dials.command_line.stills_process.do_import()` (or equivalent logic within the `Processor`) using the image file path and base geometry to create an initial `dxtbx.model.experiment_list.ExperimentList` for the still.
-    3.  The adapter invokes the main processing method of the `Processor` instance (e.g., `processor.process_experiments()`) on the imported experiment(s). This step internally handles:
-        *   Spot finding.
-        *   Indexing: If multiple lattices are found, `dials.stills_process` typically selects the best based on its internal scoring. If more control is needed, this selection logic might need to be influenced via PHIL parameters or by post-processing its multiple-lattice output if available.
-        *   (Optional) Refinement of crystal model `Crystal_i` and experimental geometry.
-        *   Integration of indexed Bragg spots, including calculation of partialities.
-    4.  The adapter collects the output `integrated_experiments` (a list of `dxtbx.model.Experiment` objects) and `integrated_reflections` (a `dials.array_family.flex.reflection_table`) from the `Processor` instance.
-    5.  If the DIALS processing adapter reports success, proceed to Sub-Module 1.S.1.Validation. If validation fails, set StillProcessingOutcome.status to "FAILURE_GEOMETRY_VALIDATION", record details, log to summary, and proceed to the next CBF file.
-    6.  If successful, retrieve objects and continue to subsequent processing modules (Module 1.S.3 and Phase 2).
+    3.  The adapter invokes the main processing method of the `Processor` instance (e.g., `processor.process_experiments()`) on the imported experiment(s). This step internally handles spot finding, indexing, refinement, and integration.
+    4.  The adapter collects the output `integrated_experiments` and `integrated_reflections` from the `Processor` instance.
+
+    **Route B: Sequence Processing (Angle_increment > 0.0°):**
+    1.  The `DIALSSequenceProcessAdapter` is used, which implements a CLI-based sequential workflow.
+    2.  Execute `dials.import` with sequence-appropriate parameters.
+    3.  Execute `dials.find_spots` with critical PHIL parameters:
+        *   `spotfinder.filter.min_spot_size=3`
+        *   `spotfinder.threshold.algorithm=dispersion`
+    4.  Execute `dials.index` with parameters:
+        *   `indexing.method=fft3d`
+        *   `geometry.convert_sequences_to_stills=false`
+        *   (Known unit cell and space group from `DIALSStillsProcessConfig` are applied here).
+    5.  Execute `dials.integrate` with sequence integration parameters.
+    6.  The adapter loads the output experiment and reflection objects from the files generated by the DIALS CLI tools.
+
+    **Common Continuation (after Route A or Route B):**
+    5.  If the selected DIALS processing adapter reports success, proceed to Sub-Module 1.S.1.Validation. If validation fails, set `StillProcessingOutcome.status` to "FAILURE_GEOMETRY_VALIDATION", record details, log to summary, and proceed to the next CBF file.
+    6.  If successful, retrieve `Experiment_dials_i` and `Reflections_dials_i` objects. These objects **must** have an identical structure regardless of the processing route taken, ensuring downstream compatibility.
 *   **Output (for each successfully processed still `i`):**
     *   `Experiment_dials_i`: The `dxtbx.model.Experiment` object from `integrated_experiments` corresponding to still `i`, containing the refined `Crystal_i`.
     *   `Reflections_dials_i`: A `dials.array_family.flex.reflection_table` (selected from `integrated_reflections` by experiment `id` if `dials.stills_process` outputs a composite table for a batch) containing indexed Bragg spots for still `i`. This table **must** include a column named `"partiality"` containing `P_spot` values. **Note:** The quantitative reliability of `P_spot` values from `dials.stills_process` for true still images requires careful validation. See Module 3.S.3 for strategies on its use in scaling.
@@ -188,7 +220,7 @@ Initially, these QC reports (plots and text summaries saved to the output direct
             *   Assert correct pass/fail status when cell parameters are within/outside tolerance of mock PDB.
             *   Assert correct pass/fail status when orientation is within/outside tolerance of mock PDB.
         *   **Verification (Q-Vector Consistency):**
-            *   Assert correct calculation of q-vector differences for sample reflections.
+            *   Assert correct calculation of `q_model` and `q_observed` for sample reflections.
             *   Assert correct pass/fail status based on `|Δq|` against `q_consistency_tolerance_angstrom_inv`.
         *   **Verification (Plots):** Check that plot files are generated if requested (existence check, not necessarily content validation in unit tests).
 
