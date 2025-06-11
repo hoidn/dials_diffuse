@@ -33,29 +33,6 @@ def hkl_to_lab_q(experiment, hkl_vec):
     R_lab = C * S * F
     return R_lab * A * hkl_vec
 
-def get_q_bragg_from_refl_data(miller_index_tuple, experiment_crystal):
-    try:
-        q_vec_scitbx = experiment_crystal.hkl_to_reciprocal_space_vec(miller_index_tuple)
-        return np.array(q_vec_scitbx.elems)
-    except AttributeError:
-        hkl_vec = matrix.col(miller_index_tuple) 
-        # experiment_crystal is a Crystal object, hkl_to_lab_q expects an Experiment object
-        # This requires a slight refactor or passing the full experiment if this path is taken.
-        # Assuming experiment_crystal has a reference to its parent experiment if needed by hkl_to_lab_q
-        # For now, this specific path might not be hit if hkl_to_reciprocal_space_vec is standard.
-        # Safest is to ensure DIALS version provides hkl_to_reciprocal_space_vec.
-        # As a fallback, one might need to construct a temporary minimal experiment for hkl_to_lab_q.
-        # This part of the original script was: get_q_bragg_from_reflection(refl, current_experiment)
-        # which passed the full experiment. For consistency, let's assume we have the full experiment context here.
-        # This helper is now more specific to needing only crystal model and HKL.
-        # For this utility mode, it is safer to rely on hkl_to_reciprocal_space_vec from the crystal model.
-        print("Warning: Falling back to manual q_bragg calculation. Ensure experiment context for hkl_to_lab_q is correct if this happens.")
-        # Simplified: assuming experiment_crystal.get_experiment() exists or is the experiment itself
-        # This line is problematic as Crystal object doesn't typically store the full experiment.
-        # Let's assume the caller (main Bragg loop) passes the full experiment for this fallback.
-        # This is redefined below as a nested function in the bragg processing part for clarity.
-        raise NotImplementedError("Fallback for get_q_bragg_from_refl_data without direct hkl_to_reciprocal_space_vec needs Experiment object.")
-
 
 def parse_args():
     parser = argparse.ArgumentParser(
