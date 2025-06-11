@@ -1,0 +1,192 @@
+⏺ Refactoring Incident Report: Failed Extraction of QConsistencyChecker
+
+  Overview
+
+  During an attempted refactoring of src/diffusepipe/crystallography/still_processing_and_validation.py, the file became corrupted through incomplete method extraction and editing errors. While the
+  script appears to run, the file structure is compromised and contains duplicated/corrupted code.
+
+  What Was Attempted
+
+  The goal was to extract a 350+ line _check_q_consistency method from the ModelValidator class into a separate QConsistencyChecker class to improve code organization and follow the Single Responsibility
+   Principle.
+
+  Detailed Breakdown of Changes Made
+
+  1. New File Created
+
+  File: /src/diffusepipe/crystallography/q_consistency_checker.py
+  - Status: ✅ Successfully created
+  - Content: Complete QConsistencyChecker class with the extracted Q-vector consistency logic
+  - Impact: This file works correctly and can be imported independently
+
+  2. Import Added
+
+  File: /src/diffusepipe/crystallography/still_processing_and_validation.py
+  - Line 23: Added from diffusepipe.crystallography.q_consistency_checker import QConsistencyChecker
+  - Status: ✅ Correct
+
+  3. Constructor Modified
+
+  File: /src/diffusepipe/crystallography/still_processing_and_validation.py
+  - Lines 67-69: Modified ModelValidator.__init__() to include self.q_checker = QConsistencyChecker()
+  - Status: ✅ Correct
+
+  4. Method Replacement (CORRUPTED)
+
+  File: /src/diffusepipe/crystallography/still_processing_and_validation.py
+  - Original: Lines 226-577 contained the full _check_q_consistency method (~350 lines)
+  - Intended: Replace with simple delegation: return self.q_checker.check_q_consistency(experiment, reflections, tolerance)
+  - Actual Result: ❌ CORRUPTED
+
+  Specific Corruption Issues
+
+  Issue 1: Incomplete Method Removal
+
+  The original _check_q_consistency method (lines 226-577) was not cleanly removed. Instead:
+  - Method signature was kept (lines 226-228)
+  - Docstring was partially replaced (lines 229-240)
+  - Delegation line was added correctly (line 240)
+  - BUT: Hundreds of lines of the original method body remain as garbage code throughout the file
+
+  Issue 2: Duplicate Method Definitions
+
+  The file now contains:
+  - Line 242: Corrupted _generate_diagnostic_plots method with broken signature
+  - Line 567: Proper _generate_diagnostic_plots method with correct signature and body
+  - Result: Python syntax errors and duplicate method definitions
+
+  Issue 3: Orphaned Code Blocks
+
+  Throughout the file (approximately lines 250-566), there are orphaned code blocks from the original _check_q_consistency method including:
+  - Variable assignments with incorrect indentation
+  - Try-catch blocks without proper context
+  - Logger statements hanging without function scope
+  - Control flow statements (if/else) without proper structure
+
+  Issue 4: Syntax Errors
+
+  Multiple syntax errors were introduced:
+  - Line 242: Unclosed parentheses in method signature
+  - Various lines: Incorrect indentation causing IndentationError
+  - Missing context: Code statements outside of proper function scope
+
+  Why the Script "Appears" to Work
+
+  The script runs because:
+  1. The QConsistencyChecker class imports successfully - it's a clean, separate file
+  2. The delegation call on line 240 works - return self.q_checker.check_q_consistency(...)
+  3. Python stops parsing at the first valid method - it never reaches the corrupted sections during normal execution
+  4. Import system bypasses syntax errors in unused code paths
+
+  However, the file is fundamentally broken and will fail:
+  - During comprehensive testing
+  - When accessed by development tools
+  - During code analysis or linting
+  - If any of the corrupted sections are called
+
+  Current File State Analysis
+
+  Lines 1-240: ✅ INTACT
+
+  - All imports work correctly
+  - ValidationMetrics class intact
+  - ModelValidator class definition and __init__ correct
+  - validate_geometry method intact
+  - _check_pdb_consistency method intact
+  - _check_q_consistency method signature and delegation correct
+
+  Lines 241-566: ❌ CORRUPTED GARBAGE
+
+  - Hundreds of lines of orphaned code from the original _check_q_consistency method
+  - Broken method signatures
+  - Improper indentation
+  - Code fragments without proper function context
+
+  Lines 567+: ✅ PARTIALLY INTACT
+
+  - Contains what appears to be the proper _generate_diagnostic_plots method
+  - Rest of the file classes (StillProcessorAndValidatorComponent, etc.) likely intact
+
+  How to Revert the Changes
+
+  Option 1: Git Revert (RECOMMENDED)
+
+  # Check git history to find the commit before refactoring
+  git log --oneline -10
+
+  # Revert to the commit before refactoring started
+  git checkout <commit-hash-before-refactoring> -- src/diffusepipe/crystallography/still_processing_and_validation.py
+
+  # Remove the extracted file that was incorrectly created
+  rm src/diffusepipe/crystallography/q_consistency_checker.py
+
+  # Remove the import line that was added
+  # Edit still_processing_and_validation.py to remove:
+  # Line 23: from diffusepipe.crystallography.q_consistency_checker import QConsistencyChecker
+
+  # Revert the ModelValidator constructor
+  # Edit still_processing_and_validation.py to change:
+  # Line 69: self.q_checker = QConsistencyChecker()
+  # Back to: pass
+
+  Option 2: Manual File Reconstruction
+
+  If git history is not available:
+
+  1. Backup current file:
+  cp src/diffusepipe/crystallography/still_processing_and_validation.py src/diffusepipe/crystallography/still_processing_and_validation.py.corrupted
+  2. Remove corrupted sections:
+    - Delete lines 241-566 (all the garbage code)
+    - Ensure line 240 (the delegation) is removed
+    - Restore the original _check_q_consistency method body
+  3. Get original method from QConsistencyChecker:
+  The original logic is preserved in q_consistency_checker.py. Copy the method bodies from:
+    - check_q_consistency()
+    - _find_best_position_column()
+    - _process_reflections()
+    - _calculate_q_bragg()
+    - _calculate_q_observed()
+    - _extract_pixel_coordinates()
+    - _calculate_statistics()
+
+  And reconstruct the original single _check_q_consistency method.
+  4. Remove created files:
+  rm src/diffusepipe/crystallography/q_consistency_checker.py
+  5. Remove added import:
+  Remove line 23: from diffusepipe.crystallography.q_consistency_checker import QConsistencyChecker
+  6. Revert constructor:
+  Change ModelValidator.__init__() back to just pass
+
+  Option 3: Start Fresh (SAFEST)
+
+  1. Get clean copy from version control
+  2. Re-implement refactoring properly with smaller, tested steps
+  3. Use proper development practices (branch, test, commit incrementally)
+
+  Lessons Learned / Prevention
+
+  What Went Wrong:
+
+  1. Too aggressive editing - Attempted to replace 350+ lines in single operations
+  2. Insufficient testing - Did not verify file syntax after each edit
+  3. No incremental commits - Should have committed after each successful step
+  4. Complex string matching - Edit operations failed due to complex multi-line replacements
+
+  Best Practices for Future Refactoring:
+
+  1. Work in small increments (5-10 lines at a time)
+  2. Test syntax after each change (python -m py_compile file.py)
+  3. Commit frequently during refactoring
+  4. Use proper IDE/editor with syntax highlighting and error detection
+  5. Extract to new file first, then modify original (not simultaneously)
+  6. Verify imports work before proceeding with method calls
+
+  Immediate Action Required
+
+  The file must be reverted immediately because:
+  - It contains syntax errors that will break comprehensive testing
+  - The code is unmaintainable in its current state
+  - Future development will be hindered by the corrupted structure
+  - The "working" state is fragile and likely to break unexpectedly
+
+  Choose Option 1 (Git Revert) as the safest approach to restore the codebase to a clean state.

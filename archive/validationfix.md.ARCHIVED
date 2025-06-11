@@ -1,0 +1,243 @@
+**Note: This plan is SUPERSEDED.**
+The Q-vector based validation was fixed and is now the primary internal consistency check. The pixel-based validation logic described herein is not part of the core `ModelValidator`'s pass/fail criteria.
+See `plan.md` (Module 1.S.1.Validation) for the current validation strategy.
+Date: December 9, 2024
+
+---
+
+**ARCHIVED PLAN**
+
+**Goal:** Replace the current placeholder logic in `ModelValidator._check_q_consistency` with the robust pixel-based position consistency check from `simple_position_consistency_check`.
+
+---
+
+**Task: Integrate Pixel-Based Validation into ModelValidator**
+
+**Relevant Files:**
+
+1.  **Source of Logic:** `./simple_validation_fix.py` (specifically the `simple_position_consistency_check` function)
+2.  **Target for Integration:** `src/diffusepipe/crystallography/still_processing_and_validation.py` (specifically the `ModelValidator` class and its `_check_q_consistency` method)
+3.  **Configuration:** `src/diffusepipe/types/types_IDL.py` (for `ExtractionConfig` if tolerance parameter needs adjustment)
+4.  **Tests:** `tests/crystallography/test_still_processing_and_validation.py` (for updating tests for `ModelValidator`)
+5.  **Documentation to Update:** `plan.md` (Module 1.S.1.Validation) and `checklists/phase1.md` (Item 1.B.V.2)
+
+**Pre-requisites:**
+
+*   Familiarize yourself with the logic in `simple_position_consistency_check` in `simple_validation_fix.py`.
+*   Familiarize yourself with the existing structure of `ModelValidator` and how `_check_q_consistency` is called by `validate_geometry` in `still_processing_and_validation.py`.
+
+---
+
+**Step-by-Step Instructions:**
+
+**Step 1: Prepare `still_processing_and_validation.py`**
+
+1.  Open `src/diffusepipe/crystallography/still_processing_and_validation.py`.
+2.  Ensure necessary imports are present at the top of the file. The pixel validation logic will require `numpy` and potentially `logging`.
+    ```python
+    import logging
+    import numpy as np
+    # ... other imports ...
+    ```
+3.  Locate the `ModelValidator` class and its `_check_q_consistency` method.
+
+**Step 2: Integrate the Pixel-Based Validation Logic**
+
+1.  **Modify `ModelValidator._check_q_consistency` method signature (if needed):**
+    *   The current signature is: `_check_q_consistency(self, experiment: object, reflections: object, tolerance: float) -> Tuple[bool, Dict[str, float]]:`
+    *   The `tolerance` parameter here is currently sourced from `extraction_config.q_consistency_tolerance_angstrom_inv`. **This is a critical point:** The name implies an Å⁻¹ unit, but the pixel-based validation uses a pixel unit tolerance.
+        *   **Decision Point (and Recommendation):**
+            1.  **Option A (Quickest, but needs config name fix later):** For now, assume the `tolerance` value passed to this method *will be* the desired pixel tolerance (e.g., 2.0 pixels). The calling code in `validate_geometry` will need to pass the correct value.
+            2.  **Option B (Better for clarity):** Modify `ExtractionConfig` to have a specific `pixel_position_tolerance_px: float` field. Then, `validate_geometry` would pass `extraction_config.pixel_position_tolerance_px` to `_check_q_consistency`. This is cleaner. *Instructions will proceed with Option A for direct integration, with a note to address Option B later.*
+
+2.  **Replace the content of `_check_q_consistency`:**
+    *   Delete the entire existing body of `_check_q_consistency` (including the Q-vector calculation attempts and the "TEMPORARY FIX" placeholder logic).
+    *   Copy the core logic from the `simple_position_consistency_check` function (from `simple_validation_fix.py`) into the body of `_check_q_consistency`.
+
+3.  **Adapt the copied logic:**
+    *   **Inputs:**
+        *   The `reflections` object is already an input to `_check_q_consistency`.
+        *   The `tolerance` parameter is already an input. Use this `tolerance` as the `pixel_tolerance`.
+    *   **Logging:**
+        *   Change `logger = logging.getLogger(__name__)` to `logger = logging.getLogger(self.__class__.__name__)` or use the module-level `logger` already defined in `still_processing_and_validation.py`.
+    *   **Column Names:** Verify that the column names used (`'xyzobs.px.value'` and `'xyzcal.px'`) are consistent with what `Reflections_dials_i` (output of Module 1.S.1) will actually contain. These seem standard for DIALS.
+    *   **Return Value:** The `simple_position_consistency_check` already returns `Tuple[bool, Dict[str, float]]` which matches the expected return type of `_check_q_consistency`. Ensure the dictionary keys are consistent (e.g., `'mean'`, `'max'`, `'median'`, `'count'`).
+
+    **The adapted `_check_q_consistency` method should look similar to this:**
+    ```python
+    # Inside ModelValidator class in still_processing_and_validation.py
+
+    def _check_q_consistency(
+        self,
+        experiment: object, # experiment object might not be strictly needed for pixel-only validation, but keep for signature consistency
+        reflections: object,
+        tolerance: float  # This 'tolerance' is now interpreted as PIXEL tolerance
+    ) -> Tuple[bool, Dict[str, float]]:
+        """
+        Check consistency between calculated and observed reflection positions
+        using pixel position differences.
+        
+        Args:
+            experiment: DIALS Experiment object (may not be used if only pixel data is checked).
+            reflections: DIALS reflection_table with pixel coordinates.
+            tolerance: Pixel tolerance for mean difference.
+            
+        Returns:
+            Tuple of (passed, statistics_dict)
+        """
+        # module_logger is the logger defined at the top of still_processing_and_validation.py
+        # Or use: logger = logging.getLogger(self.__class__.__name__)
+
+        try:
+            module_logger.info("Performing reflection position consistency check (pixel-based)")
+            
+            # Check what position columns are available
+            has_observed = 'xyzobs.px.value' in reflections
+            has_calculated = 'xyzcal.px' in reflections
+            
+            if not (has_observed and has_calculated):
+                module_logger.warning("Missing required position columns ('xyzobs.px.value', 'xyzcal.px') for pixel consistency check")
+                return False, {'count': 0, 'mean': None, 'max': None, 'median': None}
+            
+            n_total = len(reflections)
+            if n_total == 0:
+                module_logger.warning("No reflections available for pixel consistency check")
+                return False, {'count': 0, 'mean': None, 'max': None, 'median': None}
+
+            # Use a representative subset of reflections for testing (as in simple_validation_fix.py)
+            n_test = min(n_total, 500)
+            indices = list(range(n_total))
+            np.random.shuffle(indices) # Ensure numpy is imported
+            test_indices = indices[:n_test]
+            
+            position_differences = []
+            
+            for idx in test_indices:
+                try:
+                    obs_pos = reflections['xyzobs.px.value'][idx]
+                    calc_pos = reflections['xyzcal.px'][idx]
+                    
+                    dx = obs_pos[0] - calc_pos[0]
+                    dy = obs_pos[1] - calc_pos[1]
+                    position_diff = np.sqrt(dx*dx + dy*dy)
+                    position_differences.append(position_diff)
+                    
+                    if len(position_differences) <= 3 and module_logger.isEnabledFor(logging.DEBUG): # Check log level before formatting
+                        module_logger.debug(f"Reflection {idx}: obs=({obs_pos[0]:.1f},{obs_pos[1]:.1f}), "
+                                   f"calc=({calc_pos[0]:.1f},{calc_pos[1]:.1f}), diff={position_diff:.3f} px")
+                        
+                except Exception as e:
+                    module_logger.debug(f"Failed to process reflection {idx} for pixel check: {e}")
+                    continue
+            
+            if not position_differences:
+                module_logger.error("No valid reflection pairs for pixel position consistency check")
+                return False, {'count': 0, 'mean': None, 'max': None, 'median': None}
+            
+            diff_array = np.array(position_differences)
+            stats = {
+                'mean': float(np.mean(diff_array)),
+                'max': float(np.max(diff_array)),
+                'median': float(np.median(diff_array)),
+                'count': len(position_differences)
+            }
+            
+            pixel_tolerance = tolerance # Use the passed tolerance as pixel tolerance
+            
+            # Check against tolerance (mean <= tolerance AND max <= tolerance * 3)
+            passed = stats['mean'] <= pixel_tolerance and stats['max'] <= (pixel_tolerance * 3)
+            
+            module_logger.info(f"Pixel position consistency: mean_diff = {stats['mean']:.3f} px, max_diff = {stats['max']:.3f} px, "
+                       f"tolerance = {pixel_tolerance:.1f} px, passed = {passed}")
+            
+            return passed, stats
+            
+        except Exception as e:
+            module_logger.error(f"Pixel position consistency check error: {e}")
+            return False, {'count': 0, 'mean': None, 'max': None, 'median': None}
+
+    ```
+
+**Step 3: Update `ModelValidator.validate_geometry` (Caller of `_check_q_consistency`)**
+
+1.  Locate the `validate_geometry` method in `ModelValidator`.
+2.  Find the part where `q_consistency_tolerance` is extracted from `extraction_config`:
+    ```python
+    q_consistency_tolerance = extraction_config.q_consistency_tolerance_angstrom_inv
+    ```
+3.  **Critical Change/Consideration:**
+    *   You are now passing a *pixel tolerance* to `_check_q_consistency`. The configuration field `q_consistency_tolerance_angstrom_inv` is semantically incorrect for this.
+    *   **Short-term:** You can still pass this value, but it implies the user must set this config field to a pixel-based value (e.g., 2.0). Document this clearly.
+    *   **Long-term (Recommended):**
+        1.  Add a new field to `ExtractionConfig` in `src/diffusepipe/types/types_IDL.py` and `src/diffusepipe/types/types_IDL.md`, e.g.:
+            ```python
+            # In ExtractionConfig
+            pixel_position_tolerance_px: float = Field(
+                2.0, # Default pixel tolerance
+                description="Tolerance in pixels for reflection position consistency checks."
+            )
+            ```
+        2.  Update `create_default_extraction_config()` in `still_processing_and_validation.py` to include this new field with a sensible default (e.g., 2.0 pixels).
+        3.  In `validate_geometry`, fetch this new configuration value:
+            ```python
+            pixel_tol = extraction_config.pixel_position_tolerance_px
+            ```
+        4.  Pass `pixel_tol` to `self._check_q_consistency(...)`.
+
+4.  Update the docstring of `validate_geometry` to clarify that the "Q-consistency" check is now pixel-based.
+
+**Step 4: Update Docstrings and Comments**
+
+1.  Change the docstring of `ModelValidator._check_q_consistency` to accurately describe that it performs a pixel-based position consistency check.
+2.  Ensure comments within the integrated code are clear.
+
+**Step 5: Test the Integration**
+
+1.  Open `tests/crystallography/test_still_processing_and_validation.py`.
+2.  Focus on `TestModelValidator` test class.
+3.  The existing tests likely mock `_check_q_consistency` directly (e.g., `mock_q_check.return_value = (True, {'mean': 0.005, ...})`).
+4.  **Modify tests to verify the new logic:**
+    *   You now need to provide mock `reflections` objects to `validator.validate_geometry(...)` that have the `'xyzobs.px.value'` and `'xyzcal.px'` columns with controlled data.
+    *   **Test Case: Q-Consistency Pass (Pixel-Based)**
+        *   Setup: Create a mock `reflections` table where observed and calculated pixel positions are close (e.g., mean difference < 1.0 px, max difference < 3.0 px).
+        *   Execution: Call `validator.validate_geometry(...)` with an `extraction_config` providing a suitable pixel tolerance (e.g., 2.0).
+        *   Verification: Assert `validation_passed` is True, and `metrics.q_consistency_passed` is True. Check that `metrics.mean_delta_q_mag` (now mean pixel diff) is as expected.
+    *   **Test Case: Q-Consistency Fail (Pixel-Based)**
+        *   Setup: Create a mock `reflections` table where pixel positions differ significantly (e.g., mean difference > 3.0 px).
+        *   Execution: Call `validator.validate_geometry(...)` with a pixel tolerance (e.g., 2.0).
+        *   Verification: Assert `validation_passed` is False (if this is the only failing check), and `metrics.q_consistency_passed` is False.
+    *   **Test Case: Missing Columns**
+        *   Setup: Mock `reflections` object that does *not* have `'xyzobs.px.value'` or `'xyzcal.px'`.
+        *   Execution: Call `validator.validate_geometry(...)`.
+        *   Verification: Assert `metrics.q_consistency_passed` is False, and the stats dictionary indicates 0 count.
+    *   **Test Case: No Reflections**
+        *   Setup: Mock `reflections` object that is empty (`len(reflections) == 0`).
+        *   Execution: Call `validator.validate_geometry(...)`.
+        *   Verification: Assert `metrics.q_consistency_passed` is False, and stats dictionary indicates 0 count.
+
+**Step 6: Update `plan.md` and Checklists**
+
+1.  **`plan.md` - Module 1.S.1.Validation:**
+    *   Change the description of the "Internal Q-Vector Consistency Check" (Process step 2) to describe the pixel-based validation:
+        *   Instead of "Calculate `q_bragg`..." and "Calculate `q_pixel_recalculated`...", describe:
+            *   "For a representative subset of indexed reflections in `Reflections_dials_i`:"
+            *   "Get observed pixel positions (`xyzobs.px.value`) and calculated pixel positions (`xyzcal.px`)."
+            *   "Calculate the Euclidean distance in XY pixel coordinates: `diff = sqrt((obs_x - calc_x)² + (obs_y - calc_y)²)`."
+            *   "Calculate statistics on these pixel differences (mean, median, max)."
+            *   "If the mean or max pixel difference exceeds `pixel_position_tolerance_px` (a new config value, e.g., 2.0 pixels), flag this still as failing validation."
+    *   Update the input configuration to mention `pixel_position_tolerance_px` instead of `q_consistency_tolerance_angstrom_inv` for this specific check.
+2.  **`checklists/phase1.md` - Item 1.B.V.2:**
+    *   Change "Implement Internal Q-Vector Consistency Check logic" to "Implement Pixel Position Consistency Check logic".
+    *   Update sub-items to reflect getting pixel coordinates and calculating Euclidean pixel differences.
+
+**Step 7: Cleanup**
+
+1.  Once the integration is complete and tested, the standalone script `simple_validation_fix.py` can be considered for removal from the main codebase if its functionality is fully subsumed by `ModelValidator`. Alternatively, keep it as a standalone utility/example if desired, but ensure it's not part of the core pipeline execution path.
+
+---
+
+**Post-Integration Considerations:**
+
+*   **Configuration Naming:** Strongly consider adding `pixel_position_tolerance_px` to `ExtractionConfig` (as per Step 3, Option B) and updating `create_default_extraction_config` to use it. This makes the configuration semantically correct.
+*   **Performance:** The current sampling of 500 reflections in `simple_position_consistency_check` is a good balance. Monitor if this needs adjustment for very large or very small reflection tables.
+*   **Logging Levels:** Adjust `module_logger.debug` calls if they become too verbose for INFO level pipeline runs.
