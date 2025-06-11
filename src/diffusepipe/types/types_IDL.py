@@ -5,7 +5,7 @@ This module implements Pydantic models corresponding to the IDL struct definitio
 for type safety and validation throughout the pipeline.
 """
 
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
 from pydantic import BaseModel, Field
 
 
@@ -19,6 +19,14 @@ class DIALSStillsProcessConfig(BaseModel):
     force_processing_mode: Optional[str] = Field(
         None,
         description="Overrides automatic CBF data type detection. Valid values: 'stills', 'sequence', or None for auto-detection"
+    )
+    sequence_processing_phil_overrides: Optional[List[str]] = Field(
+        None,
+        description="A list of PHIL parameter strings to be applied specifically for sequence processing."
+    )
+    data_type_detection_enabled: Optional[bool] = Field(
+        True, # Default to True
+        description="If true, automatic CBF data type detection is performed."
     )
     known_unit_cell: Optional[str] = Field(
         None,

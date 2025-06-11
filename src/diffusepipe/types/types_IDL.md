@@ -12,6 +12,14 @@ module src.diffusepipe.types {
         // When null, the system will analyze CBF headers to determine the appropriate processing pathway.
         force_processing_mode: optional string;
 
+        // Behavior: A list of PHIL parameter strings (e.g., 'parameter=value') to be applied specifically when the sequence processing route is chosen.
+        // These overrides are applied *after* any base PHIL file for sequence processing and can fine-tune sequence-specific steps.
+        sequence_processing_phil_overrides: optional list<string>;
+
+        // Behavior: If true (default), automatic CBF data type detection (Module 1.S.0) is performed.
+        // If false, the system might default to a specific processing mode or require `force_processing_mode` to be set.
+        data_type_detection_enabled: optional boolean; // Default to True in implementation
+
         // Behavior: Known unit cell for indexing, e.g., "a,b,c,alpha,beta,gamma".
         // Overrides or supplements PHIL file if provided.
         known_unit_cell: optional string;
@@ -76,7 +84,7 @@ module src.diffusepipe.types {
 
         // Preconditions: Must be a positive float (e.g., 0.01 for 0.01 Å⁻¹ tolerance).
         // Behavior: Tolerance in Å⁻¹ for q-vector consistency checks in geometric model validation.
-        // Used in Module 1.S.1.Validation to compare |q_bragg - q_pixel_recalculated|.
+        // Used in Module 1.S.1.Validation to compare |q_model - q_observed|.
         q_consistency_tolerance_angstrom_inv: float;
 
 
