@@ -81,6 +81,26 @@ Initially, these QC reports (plots and text summaries saved to the output direct
 
 **Phase 1: Per-Still Geometry, Indexing, and Initial Masking**
 
+**Module 1.S.0: CBF Data Type Detection and Processing Route Selection**
+*   **Action:** Analyze CBF file headers to determine if data is true stills (Angle_increment = 0.0°) or sequence data (Angle_increment > 0.0°), then route to appropriate processing pathway.
+*   **Input (per still `i`):**
+    *   File path to raw CBF image `i`.
+    *   Configuration `config.dials_stills_process_config.force_processing_mode` (optional, to override detection).
+*   **Process:**
+    1.  If `force_processing_mode` is set ("stills" or "sequence"), use that.
+    2.  Else, parse CBF header of image `i` to extract `Angle_increment` value.
+        *   This requires a utility function (e.g., in `diffusepipe.utils.cbf_utils`) that can robustly read CBF headers (e.g., using `dxtbx.load` or minimal parsing).
+    3.  Determine data type:
+        *   IF `Angle_increment` is present and `Angle_increment == 0.0`: Route to stills processing pathway (`DIALSStillsProcessAdapter`).
+        *   IF `Angle_increment` is present and `Angle_increment > 0.0`: Route to sequence processing pathway (`DIALSSequenceProcessAdapter`).
+        *   IF `Angle_increment` is not found or ambiguous (and not overridden): Default to sequence processing pathway (safer) and log a warning.
+    4.  Log the determined `data_type` and `processing_route` for debugging.
+*   **Output (per still `i`):**
+    *   `processing_route`: String ("stills" or "sequence") indicating which adapter to use.
+*   **Testing:**
+    *   **Input:** Sample CBF files with `Angle_increment = 0.0`, `Angle_increment > 0.0`, and missing `Angle_increment`.
+    *   **Verification:** Assert correct `processing_route` determination. Test override logic.
+
 **Module 1.S.1: Per-Still Crystallographic Processing and Model Validation**
 *   **Action:** For each input still image `i`, use the Python API of `dials.stills_process` (specifically, the `dials.command_line.stills_process.Processor` class via an adapter) to perform spot finding, indexing, optional geometric refinement, and integrate Bragg reflections. This process determines the crystal orientation `U_i`, unit cell `Cell_i`, and reflection partialities `P_spot` for each still.
 *   **Input (per still `i` or a small batch of stills):**
@@ -92,7 +112,7 @@ Initially, these QC reports (plots and text summaries saved to the output direct
         *   Appropriate spot finding, indexing, refinement, and integration strategies for the specific still dataset.
         *   Error handling settings (e.g., `squash_errors = False` for debugging).
     *   Known unit cell parameters and space group information can be part of `DIALSStillsProcessConfig` and passed as hints to `dials.stills_process`.
-*   **Process (Orchestrated per still `i` or small batch by the `StillsPipelineOrchestrator` component, which calls the adapter for `dials.stills_process.Processor`):**
+*   **Process (Orchestrated per still `i` or small batch by the `StillsPipelineOrchestrator` component, which uses Module 1.S.0 to select and call the appropriate adapter):**
     To efficiently process datasets containing numerous still images, the `StillsPipelineOrchestrator` **shall implement parallel execution** for this module. This will typically involve distributing the processing of individual stills (or small, independent chunks of stills) across multiple CPU cores, for example, using Python's `multiprocessing.Pool`. Each worker process will execute the full adapter logic for `dials.stills_process.Processor` (points 1-4 below) for its assigned still(s). The orchestrator will be responsible for managing this parallel execution, collecting results (including success/failure status and paths to key output files written to still-specific working directories), and aggregating logs or error messages.
     The subsequent numbered steps (1-4) then describe the logic performed *within each parallel worker* or for each still:
     1.  The adapter initializes a `dials.command_line.stills_process.Processor` instance. It constructs the necessary PHIL parameters from the input `DIALSStillsProcessConfig` (e.g., by merging a base PHIL file with explicitly provided parameters).
@@ -117,23 +137,27 @@ Initially, these QC reports (plots and text summaries saved to the output direct
         *   `Experiment_dials_i` (from main 1.S.1 output).
         *   `Reflections_dials_i` (from main 1.S.1 output).
         *   `external_pdb_path` (if provided in the global pipeline `config.extraction_config.external_pdb_path`).
-        *   Configuration for tolerances (e.g., `config.extraction_config.cell_length_tol`, `config.extraction_config.cell_angle_tol`, `config.extraction_config.orient_tolerance_deg`, and `config.extraction_config.pixel_position_tolerance_px` for pixel-based validation).
+        *   Configuration for tolerances (e.g., `config.extraction_config.cell_length_tol`, `config.extraction_config.cell_angle_tol`, `config.extraction_config.orient_tolerance_deg`, and `config.extraction_config.q_consistency_tolerance_angstrom_inv` for Q-vector validation).
     *   **Process:**
         1.  **PDB Consistency Checks (if `external_pdb_path` provided):**
             a.  Compare unit cell parameters (lengths and angles) from `Experiment_dials_i.crystal` against the reference PDB, using `config.extraction_config.cell_length_tol` and `config.extraction_config.cell_angle_tol`.
             b.  Compare crystal orientation (`Experiment_dials_i.crystal.get_A()`) against the reference PDB (potentially by comparing U matrices after aligning B matrices, or by comparing the A matrix to a conventionally set PDB A matrix), using `config.extraction_config.orient_tolerance_deg`.
             c.  If any PDB consistency check fails, flag this still as failing validation.
-        2.  **Pixel Position Consistency Check:**
-            a.  For a representative subset of indexed reflections in `Reflections_dials_i`:
-                i.  Get observed pixel positions (`xyzobs.px.value`) and calculated pixel positions (`xyzcal.px`).
-                ii. Calculate the Euclidean distance in XY pixel coordinates: `pixel_diff = sqrt((obs_x - calc_x)² + (obs_y - calc_y)²)`.
-                iii. Collect pixel differences for up to 500 randomly selected reflections.
-            b.  Calculate statistics on pixel differences (mean, median, max).
-            c.  If the mean pixel difference exceeds `pixel_position_tolerance_px` OR the max difference exceeds `pixel_position_tolerance_px * 3`, flag this still as failing validation.
+        2.  **Internal Q-Vector Consistency Check:**
+            a.  For a representative subset of indexed reflections in `Reflections_dials_i` (e.g., up to 500 randomly selected reflections):
+                i.  **Calculate `q_model`**: This is typically derived from the reflection's `s1` vector (from `Reflections_dials_i`) and the beam's `s0` vector (from `Experiment_dials_i.beam`), such that `q_model = s1 - s0`. The `s1` vector in `Reflections_dials_i` is calculated by DIALS based on the refined crystal model and Miller index.
+                ii. **Calculate `q_observed`**:
+                    1.  Obtain the observed pixel centroid coordinates (e.g., from `xyzobs.px.value` or `xyzcal.px` in `Reflections_dials_i`).
+                    2.  Convert these pixel coordinates to laboratory frame coordinates using `Experiment_dials_i.detector[panel_id].get_pixel_lab_coord()`.
+                    3.  From the lab coordinates and `Experiment_dials_i.beam.get_s0()`, calculate the scattered beam vector `s1_observed`.
+                    4.  Compute `q_observed = s1_observed - Experiment_dials_i.beam.get_s0()`.
+                iii. Calculate the difference vector `Δq = q_model - q_observed` and its magnitude `|Δq|`.
+            b.  Calculate statistics on these `|Δq|` values (mean, median, max, count).
+            c.  If the mean `|Δq|` exceeds `config.extraction_config.q_consistency_tolerance_angstrom_inv` OR the max `|Δq|` exceeds `(config.extraction_config.q_consistency_tolerance_angstrom_inv * 5)`, flag this still as failing validation.
         3.  **Diagnostic Plot Generation:** Generate and save diagnostic plots similar to those from the original `consistency_checker.py` (q-difference histogram, q-magnitude scatter, q-difference heatmap on detector).
     *   **Output (per still `i`):**
         *   `validation_passed_flag`: Boolean.
-        *   Diagnostic metrics (e.g., mean `pixel_diff`, max `pixel_diff`, misorientation_angle_vs_pdb).
+        *   Diagnostic metrics (e.g., mean `|Δq|`, max `|Δq|`, misorientation_angle_vs_pdb).
         *   Paths to saved diagnostic plots.
         *   `processing_route_used`: String indicating whether stills or sequence processing was used
     *   **Consequence of Failure:** If `validation_passed_flag` is false, the `StillsPipelineOrchestrator` should mark this still appropriately (e.g., `StillProcessingOutcome.status = "FAILURE_GEOMETRY_VALIDATION"`) and skip subsequent processing steps for this still (i.e., skip Module 1.S.3 and Phase 2).
@@ -163,9 +187,9 @@ Initially, these QC reports (plots and text summaries saved to the output direct
         *   **Verification (PDB Checks):**
             *   Assert correct pass/fail status when cell parameters are within/outside tolerance of mock PDB.
             *   Assert correct pass/fail status when orientation is within/outside tolerance of mock PDB.
-        *   **Verification (Pixel Position Consistency):**
-            *   Assert correct calculation of pixel position differences for sample reflections.
-            *   Assert correct pass/fail status based on `pixel_diff` against `pixel_position_tolerance_px`.
+        *   **Verification (Q-Vector Consistency):**
+            *   Assert correct calculation of q-vector differences for sample reflections.
+            *   Assert correct pass/fail status based on `|Δq|` against `q_consistency_tolerance_angstrom_inv`.
         *   **Verification (Plots):** Check that plot files are generated if requested (existence check, not necessarily content validation in unit tests).
 
 **Module 1.S.2: Static and Dynamic Pixel Mask Generation**

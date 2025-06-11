@@ -164,11 +164,14 @@ class DIALSSequenceProcessAdapter:
         return result
     
     def _run_dials_index(self, config: DIALSStillsProcessConfig) -> subprocess.CompletedProcess:
-        """Run dials.index step."""
+        """Run dials.index step with critical sequence processing parameters."""
         cmd = [
             "dials.index", "imported.expt", "strong.refl",
             'output.experiments="indexed.expt"',
-            'output.reflections="indexed.refl"'
+            'output.reflections="indexed.refl"',
+            # Critical parameters for sequence data (based on plan_adaptation.md)
+            "indexing.method=fft3d",  # Not fft1d
+            "geometry.convert_sequences_to_stills=false"  # Preserve oscillation
         ]
         
         # Add known symmetry parameters

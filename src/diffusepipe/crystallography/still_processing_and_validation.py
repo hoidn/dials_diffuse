@@ -17,6 +17,10 @@ import numpy as np  # Used only for simple statistics in the plot helper
 from diffusepipe.adapters.dials_sequence_process_adapter import (
     DIALSSequenceProcessAdapter,
 )
+from diffusepipe.adapters.dials_stills_process_adapter import (
+    DIALSStillsProcessAdapter,
+)
+from diffusepipe.utils.cbf_utils import get_angle_increment_from_cbf
 from diffusepipe.crystallography.q_consistency_checker import QConsistencyChecker
 from diffusepipe.exceptions import ConfigurationError, DIALSError, DataValidationError
 from diffusepipe.types.types_IDL import (
@@ -85,7 +89,7 @@ class ModelValidator:
         extraction_config: Optional[ExtractionConfig] = None,
         output_dir: Optional[str] = None,
     ) -> Tuple[bool, ValidationMetrics]:
-        """Run all validation sub‑checks and collate the results."""
+        """Run all validation sub‑checks and collate the results. Primary internal check is Q-vector consistency."""
 
         metrics = ValidationMetrics()
 
@@ -155,14 +159,97 @@ class ModelValidator:
         """Stub PDB comparison – always passes until fully implemented."""
 
         logger.info("Checking PDB consistency against %s", pdb_path)
-        # TODO: implement real comparison logic (gemmi / cctbx)
-        return True, True, 0.0
+        
+        try:
+            # Step 1: Load PDB crystal symmetry
+            from iotbx import pdb
+            from scitbx import matrix
+            
+            pdb_input = pdb.input(file_name=pdb_path)
+            pdb_crystal_symmetry = pdb_input.crystal_symmetry()
+            
+            if pdb_crystal_symmetry is None:
+                logger.warning("PDB file %s has no crystal symmetry information, skipping PDB consistency check", pdb_path)
+                return True, True, None  # Pass if PDB lacks symmetry
+            
+            pdb_uc = pdb_crystal_symmetry.unit_cell()
+            pdb_sg = pdb_crystal_symmetry.space_group()
+            
+            # Step 2: Get experiment crystal symmetry
+            exp_crystal = experiment.crystal
+            exp_uc = exp_crystal.get_unit_cell()
+            exp_sg = exp_crystal.get_space_group()
+            
+            # Step 3: Compare unit cells
+            cell_passed = exp_uc.is_similar_to(
+                pdb_uc, 
+                relative_length_tolerance=cell_length_tol,
+                absolute_angle_tolerance=cell_angle_tol
+            )
+            
+            # Log comparison details
+            logger.info("Unit cell comparison:")
+            logger.info("  Experiment: %s", exp_uc.parameters())
+            logger.info("  PDB: %s", pdb_uc.parameters())
+            logger.info("  Cell similarity: %s (tol: length=%g, angle=%g°)", 
+                       cell_passed, cell_length_tol, cell_angle_tol)
+            
+            # Step 4: Compare space groups (informational)
+            if exp_sg.type().number() != pdb_sg.type().number():
+                logger.warning("Space group mismatch: experiment=%s, PDB=%s", 
+                             exp_sg.type().lookup_symbol(), pdb_sg.type().lookup_symbol())
+            
+            # Step 5: Compare orientations
+            A_dials = matrix.sqr(exp_crystal.get_A())
+            B_pdb = matrix.sqr(pdb_uc.fractionalization_matrix()).transpose().inverse()
+            
+            # For PDB, assume conventional orientation (U_pdb = Identity), so A_pdb_ref = B_pdb
+            misorientation_deg = ModelValidator._calculate_misorientation_static(A_dials, B_pdb)
+            orientation_passed = misorientation_deg <= orient_tolerance_deg
+            
+            logger.info("Orientation comparison:")
+            logger.info("  Misorientation angle: %.2f° (tolerance: %.2f°)", 
+                       misorientation_deg, orient_tolerance_deg)
+            logger.info("  Orientation similarity: %s", orientation_passed)
+            
+            return cell_passed, orientation_passed, misorientation_deg
+            
+        except Exception as e:
+            logger.error("PDB consistency check failed: %s", e)
+            return False, False, None
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _calculate_misorientation_static(A1_matrix_sqr: 'matrix.sqr', A2_matrix_sqr: 'matrix.sqr') -> float:
+        """Calculate misorientation angle between two A-matrices (UB matrices)."""
+        
+        from scitbx import matrix
+        import numpy as np
+        
+        def angle_between_orientations(a_mat: 'matrix.sqr', b_mat: 'matrix.sqr') -> float:
+            try:
+                a_inv = a_mat.inverse()
+            except RuntimeError:  # Singular matrix
+                return 180.0
+            r_ab = b_mat * a_inv
+            trace_r = r_ab.trace()
+            cos_angle = (trace_r - 1.0) / 2.0
+            cos_angle_clipped = np.clip(cos_angle, -1.0, 1.0)  # Handle precision errors
+            angle_rad = np.arccos(cos_angle_clipped)
+            return np.degrees(angle_rad)
+        
+        # Compare A1 with A2 and A1 with -A2 (handles potential hand inversion)
+        mis_direct = angle_between_orientations(A1_matrix_sqr, A2_matrix_sqr)
+        A2_inverted_hand = matrix.sqr([-x for x in A2_matrix_sqr.elems])
+        mis_inverted = angle_between_orientations(A1_matrix_sqr, A2_inverted_hand)
+        
+        return min(mis_direct, mis_inverted)
 
     # ------------------------------------------------------------------
     def _check_q_consistency(
         self, experiment: object, reflections: object, tolerance: float
     ) -> Tuple[bool, Dict[str, float]]:
-        """Delegate to the dedicated utility and return its statistics."""
+        """Perform Q-vector consistency check by comparing model-derived q-vectors with those recalculated from observed pixel positions. Delegates to QConsistencyChecker."""
         return self.q_checker.check_q_consistency(experiment, reflections, tolerance)
 
     # ------------------------------------------------------------------
@@ -230,8 +317,61 @@ class StillProcessorAndValidatorComponent:
     """Run DIALS processing and then the geometry checks in one call."""
 
     def __init__(self) -> None:  # noqa: D401
-        self.adapter = DIALSSequenceProcessAdapter()
+        self.stills_adapter = DIALSStillsProcessAdapter()
+        self.sequence_adapter = DIALSSequenceProcessAdapter()
         self.validator = ModelValidator()
+
+    # ------------------------------------------------------------------
+    def _determine_processing_route(
+        self, 
+        image_path: str, 
+        config: DIALSStillsProcessConfig
+    ) -> Tuple[str, object]:
+        """
+        Determine which adapter to use based on CBF data type detection.
+        
+        Implements Module 1.S.0: CBF Data Type Detection and Processing Route Selection.
+        
+        Args:
+            image_path: Path to CBF image file
+            config: Configuration that may override auto-detection
+            
+        Returns:
+            Tuple of (processing_route, selected_adapter)
+            where processing_route is "stills" or "sequence"
+        """
+        # Step 1: Check for force override
+        if config.force_processing_mode:
+            if config.force_processing_mode.lower() == "stills":
+                logger.info(f"Force override: using stills processing for {image_path}")
+                return "stills", self.stills_adapter
+            elif config.force_processing_mode.lower() == "sequence":
+                logger.info(f"Force override: using sequence processing for {image_path}")
+                return "sequence", self.sequence_adapter
+            else:
+                logger.warning(f"Invalid force_processing_mode: {config.force_processing_mode}, falling back to auto-detection")
+        
+        # Step 2: Auto-detect from CBF header
+        try:
+            angle_increment = get_angle_increment_from_cbf(image_path)
+            
+            if angle_increment is not None:
+                if angle_increment == 0.0:
+                    logger.info(f"Auto-detected stills data (Angle_increment=0.0°) for {image_path}")
+                    return "stills", self.stills_adapter
+                elif angle_increment > 0.0:
+                    logger.info(f"Auto-detected sequence data (Angle_increment={angle_increment}°) for {image_path}")
+                    return "sequence", self.sequence_adapter
+                else:
+                    logger.warning(f"Unexpected negative Angle_increment ({angle_increment}°), defaulting to sequence processing")
+                    return "sequence", self.sequence_adapter
+            else:
+                logger.warning(f"Could not determine Angle_increment from {image_path}, defaulting to sequence processing (safer)")
+                return "sequence", self.sequence_adapter
+                
+        except Exception as e:
+            logger.warning(f"CBF header parsing failed for {image_path}: {e}, defaulting to sequence processing")
+            return "sequence", self.sequence_adapter
 
     # ------------------------------------------------------------------
     def process_and_validate_still(
@@ -248,9 +388,13 @@ class StillProcessorAndValidatorComponent:
 
         logger.info("Processing still image: %s", image_path)
 
+        # -------------------- Module 1.S.0: CBF Data Type Detection and Processing Route Selection ---------------------
+        processing_route, selected_adapter = self._determine_processing_route(image_path, config)
+        logger.info(f"Selected processing route: {processing_route}")
+
         # -------------------- DIALS processing ---------------------
         try:
-            exp, refl, success, log = self.adapter.process_still(
+            exp, refl, success, log = selected_adapter.process_still(
                 image_path=image_path,
                 config=config,
                 base_expt_path=base_experiment_path,
@@ -291,6 +435,7 @@ class StillProcessorAndValidatorComponent:
                 "reflections": refl,
                 "validation_passed": passed,
                 "validation_metrics": metrics.to_dict(),
+                "processing_route_used": processing_route,  # Include routing information
                 "log_messages": log,
             },
         )
@@ -304,7 +449,11 @@ class StillProcessorAndValidatorComponent:
         base_experiment_path: Optional[str] = None,
     ) -> OperationOutcome:  # noqa: D401 – keep old name
         """Legacy API: just run DIALS without validation."""
-        exp, refl, success, log = self.adapter.process_still(
+        # Use routing logic even for legacy API
+        processing_route, selected_adapter = self._determine_processing_route(image_path, config)
+        logger.info(f"Legacy API: Selected processing route: {processing_route}")
+        
+        exp, refl, success, log = selected_adapter.process_still(
             image_path=image_path,
             config=config,
             base_expt_path=base_experiment_path,
@@ -317,6 +466,7 @@ class StillProcessorAndValidatorComponent:
                 output_artifacts={
                     "experiment": exp,
                     "reflections": refl,
+                    "processing_route_used": processing_route,  # Include routing information
                     "log_messages": log,
                 },
             )
@@ -324,7 +474,10 @@ class StillProcessorAndValidatorComponent:
             status="FAILURE",
             message="DIALS processing failed (legacy path)",
             error_code="DIALS_PROCESSING_FAILED",
-            output_artifacts={"log_messages": log},
+            output_artifacts={
+                "processing_route_used": processing_route,  # Include routing information even for failures
+                "log_messages": log,
+            },
         )
 
 
@@ -342,6 +495,7 @@ def create_default_config(
     
     return DIALSStillsProcessConfig(
         stills_process_phil_path=phil_path,
+        force_processing_mode=None,  # Default to auto-detection
         calculate_partiality=enable_partiality,
         output_shoeboxes=enable_shoeboxes,
         known_unit_cell=known_unit_cell,

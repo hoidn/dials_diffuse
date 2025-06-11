@@ -8,6 +8,10 @@ module src.diffusepipe.types {
         // parameters for dials.stills_process. This is the primary way to configure it.
         stills_process_phil_path: optional string;
 
+        // Behavior: Overrides automatic CBF data type detection. Valid values: 'stills', 'sequence', or null for auto-detection.
+        // When null, the system will analyze CBF headers to determine the appropriate processing pathway.
+        force_processing_mode: optional string;
+
         // Behavior: Known unit cell for indexing, e.g., "a,b,c,alpha,beta,gamma".
         // Overrides or supplements PHIL file if provided.
         known_unit_cell: optional string;
@@ -75,10 +79,6 @@ module src.diffusepipe.types {
         // Used in Module 1.S.1.Validation to compare |q_bragg - q_pixel_recalculated|.
         q_consistency_tolerance_angstrom_inv: float;
 
-        // Preconditions: Must be a positive float (e.g., 2.0 for 2.0 pixel tolerance).
-        // Behavior: Tolerance in pixels for reflection position consistency checks.
-        // Used in Module 1.S.1.Validation for pixel-based validation instead of complex q-vector calculations.
-        pixel_position_tolerance_px: float;
 
         // Preconditions: Must be a positive integer.
         // Behavior: Process every Nth pixel (e.g., 1 for all pixels, 2 for every other).
