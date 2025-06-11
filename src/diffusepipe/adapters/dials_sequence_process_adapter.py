@@ -4,7 +4,7 @@ import logging
 import tempfile
 import subprocess
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, Dict, List
 
 from diffusepipe.exceptions import DIALSError, ConfigurationError, DataValidationError
 from diffusepipe.types.types_IDL import DIALSStillsProcessConfig
@@ -27,7 +27,125 @@ class DIALSSequenceProcessAdapter:
     
     def __init__(self):
         """Initialize the DIALS sequence process adapter."""
-        pass
+        # Get the path to config files (relative to this package)
+        self.config_dir = Path(__file__).parent.parent / "config"
+        
+        # Define base PHIL file paths for each step
+        self.base_phil_files = {
+            "import": self.config_dir / "sequence_import_default.phil",
+            "find_spots": self.config_dir / "sequence_find_spots_default.phil", 
+            "index": self.config_dir / "sequence_index_default.phil",
+            "integrate": self.config_dir / "sequence_integrate_default.phil"
+        }
+    
+    def _load_and_merge_phil_parameters(
+        self, 
+        step: str, 
+        config: DIALSStillsProcessConfig,
+        runtime_overrides: Optional[Dict[str, str]] = None
+    ) -> List[str]:
+        """
+        Load base PHIL file and merge with configuration overrides.
+        
+        Args:
+            step: DIALS step name ("import", "find_spots", "index", "integrate")
+            config: Configuration object with potential overrides
+            runtime_overrides: Additional runtime parameter overrides
+            
+        Returns:
+            List of command-line parameter strings for the DIALS command
+        """
+        try:
+            from libtbx.phil import parse
+        except ImportError:
+            logger.warning("libtbx.phil not available, using hardcoded parameters")
+            return self._get_fallback_parameters(step, config, runtime_overrides)
+        
+        # Start with base PHIL file if it exists
+        phil_parameters = []
+        base_file = self.base_phil_files.get(step)
+        
+        if base_file and base_file.exists():
+            try:
+                # Parse base PHIL file
+                with open(base_file, 'r') as f:
+                    base_phil_content = f.read()
+                base_phil = parse(base_phil_content)
+                
+                # Extract parameters from base PHIL
+                extracted_params = base_phil.extract()
+                logger.debug(f"Loaded base PHIL parameters for {step} from {base_file}")
+                
+            except Exception as e:
+                logger.warning(f"Failed to load base PHIL file {base_file}: {e}")
+                return self._get_fallback_parameters(step, config, runtime_overrides)
+        else:
+            logger.warning(f"Base PHIL file not found for {step}: {base_file}")
+            return self._get_fallback_parameters(step, config, runtime_overrides)
+        
+        # Apply sequence processing overrides from config
+        if config.sequence_processing_phil_overrides:
+            for override in config.sequence_processing_phil_overrides:
+                phil_parameters.append(override)
+                logger.debug(f"Applied sequence override: {override}")
+        
+        # Apply runtime overrides (like input/output file names)
+        if runtime_overrides:
+            for param, value in runtime_overrides.items():
+                phil_param = f"{param}={value}"
+                phil_parameters.append(phil_param)
+                logger.debug(f"Applied runtime override: {phil_param}")
+        
+        return phil_parameters
+    
+    def _get_fallback_parameters(
+        self, 
+        step: str, 
+        config: DIALSStillsProcessConfig,
+        runtime_overrides: Optional[Dict[str, str]] = None
+    ) -> List[str]:
+        """
+        Fallback method to provide hardcoded critical parameters when PHIL loading fails.
+        
+        This preserves the original behavior with hardcoded critical parameters.
+        """
+        parameters = []
+        
+        if step == "find_spots":
+            parameters.extend([
+                "spotfinder.filter.min_spot_size=3",  # Critical: not default 2
+                "spotfinder.threshold.algorithm=dispersion"  # Critical: not default
+            ])
+            
+            # Handle config overrides with warnings for critical parameters
+            if config.spotfinder_threshold_algorithm and config.spotfinder_threshold_algorithm != "dispersion":
+                logger.warning(f"Overriding critical sequence parameter: spotfinder.threshold.algorithm={config.spotfinder_threshold_algorithm} (recommended: dispersion)")
+                parameters[-1] = f"spotfinder.threshold.algorithm={config.spotfinder_threshold_algorithm}"
+                
+        elif step == "index":
+            parameters.extend([
+                "indexing.method=fft3d",  # Critical: not fft1d
+                "geometry.convert_sequences_to_stills=false"  # Critical: preserve oscillation
+            ])
+            
+            # Add known symmetry parameters
+            if config.known_space_group:
+                parameters.append(f'indexing.known_symmetry.space_group="{config.known_space_group}"')
+            if config.known_unit_cell:
+                parameters.append(f'indexing.known_symmetry.unit_cell={config.known_unit_cell}')
+                
+        elif step == "integrate":
+            parameters.extend([
+                "geometry.convert_sequences_to_stills=false",  # Consistency
+                "integration.summation.estimate_partiality=true"  # For validation
+            ])
+        
+        # Apply runtime overrides
+        if runtime_overrides:
+            for param, value in runtime_overrides.items():
+                parameters.append(f"{param}={value}")
+        
+        return parameters
         
     def process_still(
         self,
@@ -133,8 +251,22 @@ class DIALSSequenceProcessAdapter:
                 raise DIALSError(error_msg) from e
     
     def _run_dials_import(self, image_path: str) -> subprocess.CompletedProcess:
-        """Run dials.import step."""
-        cmd = ["dials.import", image_path]
+        """Run dials.import step using PHIL files."""
+        # For import, we mainly need to set the output file
+        runtime_overrides = {
+            "output.experiments": "imported.expt",
+            "output.log": "dials.import.log"
+        }
+        
+        # Use empty config since import step doesn't typically need config overrides
+        empty_config = DIALSStillsProcessConfig()
+        
+        phil_params = self._load_and_merge_phil_parameters("import", empty_config, runtime_overrides)
+        
+        # Build command
+        cmd = ["dials.import", image_path] + phil_params
+        
+        logger.info(f"Running dials.import with parameters: {phil_params}")
         result = subprocess.run(cmd, capture_output=True, text=True)
         
         if result.returncode != 0:
@@ -144,17 +276,19 @@ class DIALSSequenceProcessAdapter:
         return result
     
     def _run_dials_find_spots(self, config: DIALSStillsProcessConfig) -> subprocess.CompletedProcess:
-        """Run dials.find_spots step."""
-        cmd = [
-            "dials.find_spots", "imported.expt",
-            "spotfinder.filter.min_spot_size=3",
-            "spotfinder.threshold.algorithm=dispersion"
-        ]
+        """Run dials.find_spots step using PHIL files and configuration overrides."""
+        # Load parameters from PHIL file and merge with config
+        runtime_overrides = {
+            "output.reflections": "strong.refl",
+            "output.log": "dials.find_spots.log"
+        }
         
-        # Add any additional spot finding parameters
-        if config.spotfinder_threshold_algorithm:
-            cmd.append(f"spotfinder.threshold.algorithm={config.spotfinder_threshold_algorithm}")
+        phil_params = self._load_and_merge_phil_parameters("find_spots", config, runtime_overrides)
         
+        # Build command
+        cmd = ["dials.find_spots", "imported.expt"] + phil_params
+        
+        logger.info(f"Running dials.find_spots with parameters: {phil_params}")
         result = subprocess.run(cmd, capture_output=True, text=True)
         
         if result.returncode != 0:
@@ -164,23 +298,26 @@ class DIALSSequenceProcessAdapter:
         return result
     
     def _run_dials_index(self, config: DIALSStillsProcessConfig) -> subprocess.CompletedProcess:
-        """Run dials.index step with critical sequence processing parameters."""
-        cmd = [
-            "dials.index", "imported.expt", "strong.refl",
-            'output.experiments="indexed.expt"',
-            'output.reflections="indexed.refl"',
-            # Critical parameters for sequence data (based on plan_adaptation.md)
-            "indexing.method=fft3d",  # Not fft1d
-            "geometry.convert_sequences_to_stills=false"  # Preserve oscillation
-        ]
+        """Run dials.index step using PHIL files and configuration overrides."""
+        # Load parameters from PHIL file and merge with config
+        runtime_overrides = {
+            "output.experiments": "indexed.expt",
+            "output.reflections": "indexed.refl",
+            "output.log": "dials.index.log"
+        }
         
-        # Add known symmetry parameters
+        # Add known symmetry from config to runtime overrides
         if config.known_space_group:
-            cmd.append(f'indexing.known_symmetry.space_group="{config.known_space_group}"')
-        
+            runtime_overrides["indexing.known_symmetry.space_group"] = f'"{config.known_space_group}"'
         if config.known_unit_cell:
-            cmd.append(f'indexing.known_symmetry.unit_cell={config.known_unit_cell}')
+            runtime_overrides["indexing.known_symmetry.unit_cell"] = config.known_unit_cell
         
+        phil_params = self._load_and_merge_phil_parameters("index", config, runtime_overrides)
+        
+        # Build command
+        cmd = ["dials.index", "imported.expt", "strong.refl"] + phil_params
+        
+        logger.info(f"Running dials.index with parameters: {phil_params}")
         result = subprocess.run(cmd, capture_output=True, text=True)
         
         if result.returncode != 0:
@@ -190,17 +327,20 @@ class DIALSSequenceProcessAdapter:
         return result
     
     def _run_dials_integrate(self, config: DIALSStillsProcessConfig) -> subprocess.CompletedProcess:
-        """Run dials.integrate step."""
-        cmd = [
-            "dials.integrate", "indexed.expt", "indexed.refl",
-            'output.experiments="integrated.expt"',
-            'output.reflections="integrated.refl"'
-        ]
+        """Run dials.integrate step using PHIL files and configuration overrides."""
+        # Load parameters from PHIL file and merge with config
+        runtime_overrides = {
+            "output.experiments": "integrated.expt",
+            "output.reflections": "integrated.refl",
+            "output.log": "dials.integrate.log"
+        }
         
-        # Add basic integration parameters
-        # Note: Some parameters like partiality are stills_process specific
-        # Keep integration simple for compatibility
+        phil_params = self._load_and_merge_phil_parameters("integrate", config, runtime_overrides)
         
+        # Build command
+        cmd = ["dials.integrate", "indexed.expt", "indexed.refl"] + phil_params
+        
+        logger.info(f"Running dials.integrate with parameters: {phil_params}")
         result = subprocess.run(cmd, capture_output=True, text=True)
         
         if result.returncode != 0:

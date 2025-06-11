@@ -1,0 +1,42 @@
+# Base PHIL parameters for dials.find_spots when processing sequence data
+# These parameters are optimized for oscillation data and include critical overrides
+
+# Spot finding algorithm - CRITICAL for sequence data
+spotfinder {
+  # CRITICAL: Use dispersion algorithm (not default)
+  threshold {
+    algorithm = dispersion
+    
+    # Dispersion-specific parameters
+    dispersion {
+      # Default parameters work well for most cases
+    }
+  }
+  
+  # CRITICAL: Minimum spot size (not default 2)
+  filter {
+    min_spot_size = 3
+    
+    # Additional filtering parameters
+    d_min = None
+    d_max = None
+    ice_rings = False
+  }
+  
+  # Region of interest (if needed)
+  region_of_interest = []
+  
+  # Scan range - use all images by default
+  scan_range = []
+}
+
+# Output settings
+output {
+  reflections = "strong.refl"
+  shoeboxes = False
+  log = "dials.find_spots.log"
+  debug_log = "dials.find_spots.debug.log"
+}
+
+# Performance settings
+nproc = 1

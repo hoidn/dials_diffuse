@@ -1,0 +1,50 @@
+# Base PHIL parameters for dials.index when processing sequence data
+# These parameters are optimized for oscillation data with critical method selection
+
+# Indexing method - CRITICAL for sequence data
+indexing {
+  # CRITICAL: Use fft3d method (not fft1d)
+  method = fft3d
+  
+  # Multiple lattice search settings
+  multiple_lattice_search {
+    max_lattices = 1
+  }
+  
+  # Known symmetry (will be overridden if provided by config)
+  known_symmetry {
+    unit_cell = None
+    space_group = None
+  }
+  
+  # Refinement settings
+  refinement_protocol {
+    d_min_start = None
+    n_macro_cycles = 1
+  }
+  
+  # Basis vector combinations to try
+  basis_vector_combinations {
+    max_combinations = None
+  }
+}
+
+# Geometry refinement during indexing
+geometry {
+  # CRITICAL: Preserve sequence structure
+  convert_sequences_to_stills = false
+  
+  # Detector refinement
+  detector_fix = *all in_beam_plane out_beam_plane
+  
+  # Beam refinement  
+  beam_fix = *all in_spindle_plane out_spindle_plane
+}
+
+# Output settings
+output {
+  experiments = "indexed.expt"
+  reflections = "indexed.refl"
+  log = "dials.index.log"
+  debug_log = "dials.index.debug.log"
+}

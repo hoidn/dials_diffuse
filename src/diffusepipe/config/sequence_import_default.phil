@@ -1,0 +1,31 @@
+# Base PHIL parameters for dials.import when processing sequence data
+# These parameters are optimized for oscillation data (Angle_increment > 0.0°)
+
+# Input/Output parameters (will be overridden by adapter)
+input {
+  # CBF file path will be provided by DIALSSequenceProcessAdapter
+}
+
+# Geometry settings for sequence data
+geometry {
+  # CRITICAL: Do not convert sequences to stills - preserve oscillation information
+  convert_sequences_to_stills = false
+  
+  # Allow detector geometry refinement if needed
+  refine_detector_geometry = false
+}
+
+# Import behavior
+import {
+  # Handle potential file format variations
+  check_format = true
+  
+  # Template validation
+  template = *auto
+}
+
+# Logging
+output {
+  log = "dials.import.log"
+  debug_log = "dials.import.debug.log"
+}

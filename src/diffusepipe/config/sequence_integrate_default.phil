@@ -1,0 +1,62 @@
+# Base PHIL parameters for dials.integrate when processing sequence data
+# These parameters are optimized for oscillation data integration
+
+# Integration algorithm
+integration {
+  # Integration algorithm selection
+  algorithm = *auto 3d summation
+  
+  # Profile fitting (for better data quality)
+  profile_fitting = True
+  
+  # Background determination
+  background {
+    algorithm = *auto simple glm robust
+    
+    # Simple background parameters
+    simple {
+      outlier_algorithm = *null tukey normal
+    }
+  }
+  
+  # Summation integration parameters
+  summation {
+    # Calculate partialities for quality assessment
+    estimate_partiality = True
+  }
+  
+  # Shoebox parameters
+  shoebox_size {
+    algorithm = *auto bbox
+  }
+  
+  # Prediction parameters
+  prediction {
+    padding = 1.0
+  }
+}
+
+# Geometry settings
+geometry {
+  # CRITICAL: Preserve sequence structure (consistency with other steps)
+  convert_sequences_to_stills = false
+}
+
+# Profile modeling
+profile {
+  algorithm = *auto gaussian_rs
+}
+
+# Output settings
+output {
+  experiments = "integrated.expt"
+  reflections = "integrated.refl"
+  log = "dials.integrate.log"
+  debug_log = "dials.integrate.debug.log"
+}
+
+# Performance settings
+nproc = 1
+
+# Include/exclude settings
+include_bad_reference = False
