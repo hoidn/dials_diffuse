@@ -121,7 +121,7 @@ Initially, these QC reports (plots and text summaries saved to the output direct
     *   **Verification:** Assert correct `processing_route` determination. Test override logic.
 
 **Module 1.S.1: Per-Still Crystallographic Processing and Model Validation**
-*   **Action:** For each input still image `i`, use the Python API of `dials.stills_process` (specifically, the `dials.command_line.stills_process.Processor` class via an adapter) to perform spot finding, indexing, optional geometric refinement, and integrate Bragg reflections. This process determines the crystal orientation `U_i`, unit cell `Cell_i`, and reflection partialities `P_spot` for each still.
+*   **Action:** For each input image `i`, use the appropriate DIALS processing pathway (determined by Module 1.S.0) to perform spot finding, indexing, optional geometric refinement, and integrate Bragg reflections. This process determines the crystal orientation `U_i`, unit cell `Cell_i`, and reflection partialities `P_spot` for each image.
 *   **Input (per still `i` or a small batch of stills):**
     *   File path(s) to raw still image(s).
     *   Base experimental geometry information (`DE_base`), potentially provided as a reference DIALS `.expt` file or constructed programmatically. This includes common detector and source models.
