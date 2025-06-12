@@ -1,6 +1,6 @@
 # Crystal Diffuse Scattering Pipeline
 
-This project wraps DIALS into a scripted workflow capable of handling both true still images and sequence data.
+This project does pixel-level analysis of crystallographic diffuse scattering in a scripted workflow capable of handling both true still images and sequence data.
 
 The output will be a merged 3D diffuse scattering map.
 
