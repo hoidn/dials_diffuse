@@ -4,6 +4,10 @@ This project wraps DIALS into a scripted workflow capable of handling both true 
 
 The output will be a merged 3D diffuse scattering map.
 
+## Methodology 
+
+The approach follows Meisburger's published work. We use standard libraries wherever possible. Certain things -- especially background estimation -- need to be adapted to work with stills data. 
+
 
 ## Features
 
@@ -61,20 +65,37 @@ See the **[Visual Diagnostics Guide](docs/VISUAL_DIAGNOSTICS_GUIDE.md)**.
 
 The processing is divided into three main phases:
 
-1.  **Phase 1: Per-Still Processing & Masking**
-    *   **Data Type Detection:** Analyzes CBF headers to select the correct DIALS workflow (stills vs. sequence).
-    *   **DIALS Processing:** Performs spot-finding, indexing, and refinement to obtain a crystal model for each image.
-    *   **Geometric Validation:** Verifies the quality of the crystal model using Q-vector consistency checks.
-    *   **Mask Generation:** Creates static, dynamic, and Bragg masks.
+### Phase 1: Per-Still Processing & Masking
+The goal of this phase is to process each raw detector image to obtain a validated crystallographic model and a comprehensive mask that isolates the diffuse scattering signal.
 
-2.  **Phase 2: Diffuse Intensity Extraction & Correction**
-    *   **Data Extraction:** Iterates through unmasked pixels of each image.
-    *   **Q-Vector Calculation:** Computes the scattering vector $\mathbf{q}$ for each pixel.
-    *   **Correction Application:** Applies LP, QE, Solid Angle, and Air Attenuation corrections to pixel intensities.
+*   **Data Type Detection:** The pipeline first inspects the CBF header to determine if the image is a true still or part of an oscillation sequence. It then automatically routes the data to the appropriate DIALS processing adapter.
+*   **Crystallographic Processing:** DIALS is used to perform spot-finding, auto-indexing, and geometric refinement. This step yields a precise crystal orientation matrix ($\mathbf{U}_i$) and unit cell for each image.
+*   **Geometric Validation:** The quality of the crystal model is verified using a Q-vector consistency check, which ensures that the model accurately maps between reciprocal space and detector space.
+*   **Mask Generation:** A total mask is created for each still by combining a global bad-pixel mask (for detector gaps, shadows, etc.) with a per-still Bragg mask that covers the regions of intense Bragg diffraction for that specific orientation.
 
-3.  **Phase 3: Voxelization, Scaling & Merging**
-    *   **Grid Definition:** Creates a common 3D reciprocal space grid based on an average crystal model.
-    *   **Voxel Accumulation:** Bins all corrected diffuse pixels from all stills into the 3D grid using an HDF5-backed accumulator for memory efficiency.
-    *   **Relative Scaling:** Refines a multiplicative scale factor for each still to place all datasets on a consistent relative scale.
-    *   **Merging:** Performs an inverse-variance weighted merge of all observations within each voxel to produce the final 3D diffuse map.
+### Phase 2: Diffuse Intensity Extraction & Correction
+This phase iterates through the valid pixels identified in Phase 1 and applies a series of physical corrections to obtain accurate intensity measurements.
 
+*   **Data Extraction:** For every unmasked pixel in an image, its raw intensity is read, and its position is used to calculate the corresponding scattering vector ($\mathbf{q}$).
+*   **Physical Corrections:** The intensity of each pixel is corrected for a series of experimental and geometric effects. The full correction is applied multiplicatively, combining four key factors:
+    1.  **Lorentz-Polarization (LP):** Accounts for polarization and the geometry of diffraction.
+    2.  **Quantum Efficiency (QE):** Account for detector sensitivity.
+    3.  **Solid Angle ($\Omega$):** Normalizes intensity by the solid angle subtended by the pixel.
+    4.  **Air Attenuation:** Corrects for X-ray absorption by air between the sample and detector.
+*   **Output:** The result of this phase is a list of corrected `{q-vector, intensity, sigma}` data points for each individual still image.
+
+### Phase 3: Voxelization, Scaling & Merging
+This phase combines the processed data from all individual stills into a single, self-consistent 3D diffuse scattering map.
+
+*   **Global Grid Definition:** A common 3D grid in reciprocal space is defined by first calculating an average crystal model from all successfully processed stills. This ensures all data can be mapped to a consistent reference frame.
+*   **Voxel Accumulation:** The corrected diffuse data points from every still are binned into this global 3D grid. For memory efficiency with large datasets, this process is handled by a `VoxelAccumulator` that can use an HDF5 file as a backend.
+*   **Relative Scaling:** A custom scaling model is refined to correct for inter-image variations ( changes in beam intensity or illuminated crystal volume). This model determines a multiplicative scale factor for each still, placing all datasets on a common relative scale.
+*   **Merging:** The final scaled observations are merged. Within each voxel of the 3D grid, all contributing intensity measurements are combined using an inverse-variance weighted average to produce the final merged intensity and its associated error.
+
+## Next Steps: Phase 4 (Pending)
+
+The final phase of the pipeline will focus on placing the merged data onto an absolute scale and preparing it for scientific interpretation.
+
+*   **Absolute Scaling:** The relatively-scaled diffuse map will be converted to absolute units ( electron units per unit cell). This will be achieved by matching the total experimental scattering (diffuse + Bragg) to the total theoretical scattering from a known unit cell composition, using the Krogh-Moe/Norman summation method.
+*   **Incoherent Subtraction:** The theoretical incoherent (Compton) scattering background will be calculated from the sample composition and subtracted from the absolute-scaled map.
+*   **Final Output:** The result will be the final, absolutely-scaled 3D diffuse scattering map, ready for analysis.
