@@ -460,8 +460,8 @@ def run_phase2_data_extraction(
     # 3.5: Extract diffuse data
     logger.info(f"Extracting diffuse data to: {output_npz_path}")
     data_extractor_outcome = data_extractor.extract_from_still(
-        component_inputs=component_inputs,
-        extraction_config=extraction_config,
+        inputs=component_inputs,
+        config=extraction_config,
         output_npz_path=str(output_npz_path),
     )
 
