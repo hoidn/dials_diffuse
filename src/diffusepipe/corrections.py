@@ -184,10 +184,10 @@ def create_synthetic_experiment_for_testing():
     panel.get_fast_axis.return_value = [1, 0, 0]
     panel.get_slow_axis.return_value = [0, 1, 0]
 
-    # Mock detector
+    # Mock detector with proper magic method support
     detector = Mock()
-    detector.__getitem__.return_value = panel
-    detector.__len__.return_value = 1
+    detector.__getitem__ = Mock(return_value=panel)
+    detector.__len__ = Mock(return_value=1)
     experiment.detector = detector
 
     # Mock crystal

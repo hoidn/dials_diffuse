@@ -93,7 +93,7 @@ class DIALSStillsProcessAdapter:
                 experiments = ExperimentListFactory.from_json_file(base_expt_path)
                 log_messages.append(f"Loaded base experiment from {base_expt_path}")
             else:
-                experiments = do_import([image_path])
+                experiments = do_import(image_path)
                 log_messages.append(f"Imported experiment from {image_path}")
 
             if not experiments or len(experiments) == 0:

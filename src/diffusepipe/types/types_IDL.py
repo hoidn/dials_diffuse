@@ -106,6 +106,9 @@ class ExtractionConfig(BaseModel):
     air_pressure_atm: Optional[float] = Field(
         1.0, description="Air pressure in atmospheres for air attenuation correction (default: 1 atm)"
     )
+    save_original_pixel_coordinates: bool = Field(
+        True, description="If true, saves original panel IDs and pixel coordinates in NPZ output for visual diagnostics"
+    )
 
 
 class RelativeScalingConfig(BaseModel):

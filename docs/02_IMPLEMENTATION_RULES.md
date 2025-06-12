@@ -42,6 +42,23 @@ This document outlines the standard conventions, patterns, and rules for impleme
     *   Use a consistent style (e.g., Google Style for Python docstrings).
     *   Clearly document parameters, return values, and any exceptions/errors raised.
     *   Explain the *purpose* and *behavior*, not just *what* the code does.
+*   **Vectorization with NumPy:**
+    *   **Principle:** For operations involving numerical data, especially on arrays or sequences of numbers (e.g., pixel data, lists of coordinates, q-vectors), prioritize vectorized operations using NumPy over explicit Python loops where feasible and sensible.
+    *   **Benefits:** NumPy vectorization typically leads to more concise, readable, and significantly more performant code for numerical tasks.
+    *   **Practice:** Identify opportunities to replace loops that perform element-wise arithmetic or apply mathematical functions to sequences with equivalent NumPy array operations.
+        ```python
+        # Less Preferred (Python loop)
+        # result = []
+        # for x, y in zip(list_a, list_b):
+        #     result.append(x * y + 5)
+
+        # Preferred (NumPy vectorization)
+        # import numpy as np
+        # array_a = np.array(list_a)
+        # array_b = np.array(list_b)
+        # result_array = array_a * array_b + 5
+        ```
+    *   **Consideration:** While vectorization is generally preferred for performance, ensure that its use does not unduly obfuscate the logic for very complex, non-standard operations. Balance performance with clarity. DIALS `flex` arrays also offer vectorized operations and should be used when interacting directly with DIALS data structures.
 *   **Naming:** Follow language-standard naming conventions (e.g., snake_case for Python variables/functions, CamelCase for Python classes). Use descriptive names.
 
 **5. Data Handling: Parse, Don't Validate (Leveraging Models like Pydantic)**
@@ -217,14 +234,16 @@ This document outlines the standard conventions, patterns, and rules for impleme
 
 **15. DIALS Integration Best Practices**
 
-*   **Data Type Detection:** Always check CBF headers for `Angle_increment` to determine if data is stills (0°) or sequences (>0°)
+*   **Data Type Detection (Module 1.S.0):** Always check CBF headers for `Angle_increment`. This value determines the processing pathway.
 *   **Processing Mode Selection:**
-    *   Stills data (Angle_increment = 0): Use `dials.stills_process` approach
-    *   Sequence data (Angle_increment > 0): Use sequential workflow (import → find_spots → index → integrate)
-*   **PHIL Parameter Validation:** Compare with working DIALS logs to ensure parameter correctness
-*   **API Import Stability:** DIALS Python API imports frequently change; prefer CLI-based adapters for robustness
-*   **Validation Approach:** Use simple pixel-position validation instead of complex Q-vector calculations
-*   **Debugging Strategy:** Always compare with working manual DIALS processing logs as ground truth
+    *   **True Stills Data (Angle_increment = 0.0°):** Use the `DIALSStillsProcessAdapter`, which wraps the `dials.stills_process` Python API. Ensure PHIL parameters are appropriate for stills.
+    *   **Sequence Data (Angle_increment > 0.0°):** Use the `DIALSSequenceProcessAdapter`, which executes a sequential DIALS CLI workflow (`dials.import` → `dials.find_spots` → `dials.index` → `dials.integrate`). Use the critical PHIL parameters specified in `plan.md` (Section 0.6) for this route.
+*   **Automatic Routing:** The `StillsPipelineOrchestrator` (or equivalent) should implement this data type detection and routing logic.
+*   **Configuration:** Allow forcing a processing mode via configuration (`DIALSStillsProcessConfig.force_processing_mode`) to override auto-detection if necessary.
+*   **Adapter Output Consistency:** Both adapters (`DIALSStillsProcessAdapter` and `DIALSSequenceProcessAdapter`) must return DIALS `Experiment` and `reflection_table` objects with a consistent structure for downstream modules.
+*   **PHIL Parameter Validation:** For sequence processing, ensure the critical PHIL parameters (e.g., `spotfinder.filter.min_spot_size=3`, `indexing.method=fft3d`, `geometry.convert_sequences_to_stills=false`) are correctly applied by the `DIALSSequenceProcessAdapter`. Compare with working manual DIALS logs if issues arise.
+*   **Validation Approach (Module 1.S.1.Validation):** The primary geometric validation method is Q-vector consistency (`q_model` vs. `q_observed`). Pixel-based validation is a simpler alternative or debug tool.
+*   **Debugging Strategy:** When troubleshooting, first confirm the correct processing route was chosen. Then, compare DIALS logs from the failing adapter with logs from a manually executed, working DIALS workflow for that data type.
 
 **16. Service/Plugin Registration and Naming (If Applicable)**
 

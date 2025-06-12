@@ -2,6 +2,8 @@
 
 This directory contains scripts for visual verification of Phase 0 and Phase 1 processing outputs. These tools help validate that DIALS processing, mask generation, and data transformations are working correctly through manual inspection of generated plots.
 
+**📖 For comprehensive documentation on the latest visual diagnostic tools (including Phase 2), see [docs/VISUAL_DIAGNOSTICS_GUIDE.md](../../docs/VISUAL_DIAGNOSTICS_GUIDE.md)**
+
 ## Overview
 
 The visual diagnostic scripts are designed to:
@@ -172,6 +174,66 @@ python check_total_mask.py \
 - Final diffuse mask should preserve most detector area
 - No obvious Bragg peaks should remain in diffuse regions
 - Reflection statistics should match expectations
+
+---
+
+### 4. `check_diffuse_extraction.py` - Diffuse Extraction Verification
+
+**Purpose**: Verify diffuse scattering extraction and correction processes by visualizing the outputs from Phase 1 (DIALS processing) and Phase 2 (DataExtractor).
+
+**Key Visualizations**:
+- Raw image with extracted diffuse pixels overlay
+- Q-space coverage projections (qx vs qy, qx vs qz, qy vs qz)
+- Radial Q-space distribution (intensity vs |Q|)
+- Intensity distribution histograms
+- Intensity heatmap on detector (if pixel coordinates available)
+- Sigma vs intensity scatter plot with Poisson noise reference
+- I/σ distribution histogram with statistics
+
+**Usage Examples**:
+```bash
+# Basic diffuse extraction check
+python check_diffuse_extraction.py \
+  --raw-image ../../747/lys_nitr_10_6_0491.cbf \
+  --expt ../../lys_nitr_10_6_0491_dials_processing/indexed_refined_detector.expt \
+  --total-mask ../../lys_nitr_10_6_0491_dials_processing/total_diffuse_mask.pickle \
+  --npz-file extraction_output.npz
+
+# With optional masks and background map
+python check_diffuse_extraction.py \
+  --raw-image image.cbf --expt experiment.expt \
+  --total-mask total_mask.pickle --npz-file data.npz \
+  --bragg-mask bragg_mask.pickle \
+  --pixel-mask pixel_mask.pickle \
+  --bg-map background_map.npy \
+  --output-dir custom_output \
+  --verbose
+```
+
+**Output Files**:
+- `diffuse_pixel_overlay.png` - Raw image with diffuse pixels highlighted (green)
+- `q_projection_qx_qy.png`, `q_projection_qx_qz.png`, `q_projection_qy_qz.png` - Q-space projections
+- `radial_q_distribution.png` - Intensity vs radial Q scatter plot
+- `intensity_histogram.png` - Intensity distribution (linear and log scale)
+- `intensity_heatmap_panel_0.png` - Intensity mapped back to detector coordinates
+- `sigma_vs_intensity.png` - Error analysis with Poisson noise reference
+- `isigi_histogram.png` - I/σ distribution with mean and median markers
+- `intensity_correction_summary.txt` - Sample of corrected intensity values
+- `extraction_diagnostics_summary.txt` - Overall summary and file listing
+
+**What to Look For**:
+- Diffuse pixels should avoid Bragg peak regions and bad pixel areas
+- Q-space coverage should be reasonable and evenly distributed
+- Intensity distributions should be physically reasonable (positive, not bimodal)
+- I/σ values should be reasonable (typically > 1 for good data)
+- Intensity heatmap should show smooth spatial distribution
+- Sigma values should follow roughly Poisson statistics (σ ≈ √I)
+
+**Important Notes**:
+- Some plots (pixel overlay, intensity heatmap) require original pixel coordinates to be saved in the NPZ file
+- If pixel coordinates are not available, these plots will be skipped with a warning
+- The intensity correction plot is simplified due to lack of intermediate processing data
+- For multi-panel detectors, only panel 0 is visualized by default
 
 ---
 

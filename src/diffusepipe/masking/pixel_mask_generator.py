@@ -404,9 +404,10 @@ class PixelMaskGenerator:
         """
         try:
             # Get raw data for this image
-            raw_data = image_set.get_raw_data(0)  # First (and only) image in the set
+            raw_data_result = image_set.get_raw_data(0)  # First (and only) image in the set
+            raw_data_iterable = raw_data_result if isinstance(raw_data_result, tuple) else (raw_data_result,)  # Ensure iterable
 
-            for panel_idx, panel_data in enumerate(raw_data):
+            for panel_idx, panel_data in enumerate(raw_data_iterable):
                 if panel_idx >= len(panel_stats):
                     logger.warning(
                         f"Panel {panel_idx} exceeds expected number of panels"

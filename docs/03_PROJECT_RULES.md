@@ -111,6 +111,7 @@ DiffusePipe/
     *   **Application Configs:** Store in `src/diffusepipe/config/`.
     *   **Build/Environment Configs:** Store in the project root or dedicated `config/` directory.
     *   **Task-specific Configs:** (e.g., PHIL files) Store in the related component's directory under `config/`.
+        *   For the sequential DIALS workflow (used for sequence data), consider creating base PHIL files in `src/diffusepipe/config/` for each step (e.g., `import_sequence.phil`, `find_spots_sequence.phil`, `index_sequence.phil`, `integrate_sequence.phil`). The `DIALSSequenceProcessAdapter` can then use these as defaults and apply overrides.
 *   **Referencing Configs:** Scripts should use absolute paths from the project root to reference configuration files rather than assuming relative locations.
 *   **Documentation:** Document the purpose and format of configuration files in a README or in comments within the files themselves.
 

@@ -67,7 +67,15 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
 
 ---
 
-**4. Key Coding Standards**
+**4. Visual Diagnostics & Testing**
+
+*   **Visual Diagnostics Guide:** See `VISUAL_DIAGNOSTICS_GUIDE.md` for comprehensive documentation on visual verification tools for Phase 2 data extraction.
+*   **End-to-End Testing:** Use `scripts/dev_workflows/run_phase2_e2e_visual_check.py` for complete pipeline verification.
+*   **Diagnostic Tools:** Use `scripts/visual_diagnostics/check_diffuse_extraction.py` for detailed analysis of extraction outputs.
+
+---
+
+**5. Key Coding Standards**
 
 *   **Python Version:** `3.10+`
 *   **Formatting:** PEP 8 compliant, enforced by `Black` & `Ruff` (run `make format` / `make lint` or equivalent).
@@ -96,8 +104,11 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
     *   **Practice:** This manager class handles connection details, API call formatting, and basic response parsing. Other components use this manager rather than interacting directly with the external service's raw API.
     *   **Reference:** See relevant section in `02_IMPLEMENTATION_RULES.md` and project-specific library integration guides (e.g., in `LIBRARY_INTEGRATION/`).
 *   **Integration with DIALS via Python API:**
-    *   **Standard:** Interaction with DIALS crystallography software for initial stills processing (spot finding, indexing, integration) is handled by a Python orchestrator (`StillsPipelineOrchestrator`) which uses the `dials.stills_process` Python API via a dedicated adapter layer.
-    *   **Practice:** The Python orchestrator configures and invokes the `dials.stills_process` adapter. This adapter manages the internal DIALS workflow. Subsequent Python modules (`DataExtractor`, `ConsistencyChecker`, etc.) process and analyze the Python objects (e.g., DIALS `ExperimentList`, `reflection_table`) and files produced by this DIALS processing stage.
+    *   **Standard:** Interaction with DIALS crystallography software for initial image processing (spot finding, indexing, integration) is handled by a Python orchestrator (`StillsPipelineOrchestrator`). This orchestrator first determines the data type (true still or sequence data) by inspecting the CBF image header (Module 1.S.0).
+    *   For **true still images** (Angle_increment = 0.0°), it uses the `dials.stills_process` Python API via a dedicated adapter (`DIALSStillsProcessAdapter`).
+    *   For **sequence data** (Angle_increment > 0.0°), it uses a sequential DIALS command-line workflow (import → find_spots → index → integrate) via a separate adapter (`DIALSSequenceProcessAdapter`).
+    *   Both adapters produce consistent output objects (`ExperimentList`, `reflection_table`) for downstream processing.
+    *   **Practice:** The Python orchestrator configures and invokes the appropriate DIALS adapter based on data type. These adapters manage the internal DIALS workflow. Subsequent Python modules (`DataExtractor`, `ConsistencyChecker`, etc.) process and analyze the Python objects (e.g., DIALS `ExperimentList`, `reflection_table`) and files produced by this DIALS processing stage.
     *   **Geometric Corrections:** The `DataExtractor` leverages the robust DIALS `Corrections` API for Lorentz-Polarization and Quantum Efficiency corrections, while implementing custom calculations only for Solid Angle and Air Attenuation corrections specific to diffuse pixels.
     *   **Configuration:** PHIL files (e.g., in `src/diffusepipe/config/` or specified by the user) provide standardized parameter settings for `dials.stills_process`.
 *   **Host Language Orchestration with DSL/Script Evaluation (if applicable):**
@@ -135,14 +146,11 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
             *   `refine_detector.phil`
         *   `diagnostics/`: Diagnostic tools
             *   `__init__.py`
-            *   `consistency_checker.py`
-            *   `consistency_checker_IDL.md`
             *   `q_calculator.py`
             *   `q_calculator_IDL.md`
         *   `extraction/`: Data extraction components
             *   `__init__.py`
-            *   `extractor.py`
-            *   `extractor_IDL.md`
+            *   `data_extractor_IDL.md`
         *   `orchestration/`: Pipeline coordination
             *   `__init__.py`
             *   `pipeline_orchestrator_IDL.md`

@@ -6,10 +6,6 @@ import tempfile
 import shutil
 
 
-@pytest.fixture
-def tmp_path_factory():
-    """Provide access to pytest's tmp_path_factory for creating temporary directories."""
-    return pytest.tmp_path_factory
 
 
 @pytest.fixture
