@@ -4,6 +4,8 @@ import logging
 from typing import Dict, Any, Tuple, Optional
 
 from diffusepipe.exceptions import DIALSError
+from dials.command_line.generate_mask import phil_scope as generate_mask_phil_scope
+from libtbx.phil import parse as phil_parse
 
 logger = logging.getLogger(__name__)
 
@@ -58,21 +60,28 @@ class DIALSGenerateMaskAdapter:
             if mask_generation_params is None:
                 mask_generation_params = {
                     "border": 2,  # Border around each reflection
-                    "algorithm": "simple",  # Simple mask algorithm
                 }
 
-            # Import DIALS masking utilities (delayed import)
-            try:
-                from dials.util.masking import generate_mask
-                from dials.array_family import flex
-            except ImportError as e:
-                raise DIALSError(f"Failed to import DIALS masking components: {e}")
+            log_messages.append("Starting Bragg mask generation")
 
-            log_messages.append("Imported DIALS masking utilities")
+            # Create ExperimentList if we have a single experiment
+            try:
+                from dxtbx.model import ExperimentList
+
+                if not isinstance(experiment, ExperimentList):
+                    experiment_list = ExperimentList([experiment])
+                else:
+                    experiment_list = experiment
+            except ImportError as e:
+                raise DIALSError(f"Failed to import ExperimentList: {e}")
+
+            # Convert mask_generation_params dict to PHIL object
+            phil_params_object = self._create_phil_params(mask_generation_params)
+            log_messages.append("Created PHIL parameters object")
 
             # Generate the mask
             mask_result = self._call_generate_mask(
-                experiment, reflections, mask_generation_params
+                experiment_list, reflections, phil_params_object
             )
 
             log_messages.append("Generated Bragg mask successfully")
@@ -94,31 +103,144 @@ class DIALSGenerateMaskAdapter:
                 raise DIALSError(error_msg) from e
 
     def _call_generate_mask(
-        self, experiment: object, reflections: object, params: Dict[str, Any]
+        self, experiment_list: object, reflections: object, phil_params_object: object
     ) -> object:
         """
-        Call the actual DIALS generate_mask function.
+        Generate Bragg masks from reflections positions.
+
+        Note: The dials.util.masking.generate_mask function is for general detector
+        masking and expects an ImageSet, not ExperimentList. For Bragg-specific
+        masking from reflections, we create masks directly from reflection positions.
 
         Args:
-            experiment: DIALS Experiment object
-            reflections: DIALS reflection_table
-            params: Parameters for mask generation
+            experiment_list: DIALS ExperimentList object
+            reflections: DIALS reflection_table containing indexed spots
+            phil_params_object: PHIL parameters object for mask generation
 
         Returns:
-            Mask result from DIALS
+            Mask result as tuple of flex.bool arrays
 
         Raises:
-            DIALSError: When the DIALS call fails
+            DIALSError: When the mask generation fails
         """
         try:
-            from dials.util.masking import generate_mask
-            
-            # Call the actual DIALS generate_mask function
-            mask_result = generate_mask(experiment, reflections, **params)
-            return mask_result
+            from dials.array_family import flex
+
+            # Get the experiment (assuming single experiment for now)
+            if len(experiment_list) == 0:
+                raise DIALSError("ExperimentList is empty")
+
+            experiment = experiment_list[0]
+            detector = experiment.detector
+
+            # Get border parameter (default to 2 if not specified)
+            border = getattr(phil_params_object, "border", 2)
+
+            # Initialize mask for each panel (True = unmasked, False = masked)
+            panel_masks = []
+            for panel_idx, panel in enumerate(detector):
+                panel_size = panel.get_image_size()
+                # Create a mask of all True (unmasked) initially
+                panel_mask = flex.bool(flex.grid(panel_size[1], panel_size[0]), True)
+                panel_masks.append(panel_mask)
+
+            # Mask regions around reflection centroids
+            if reflections is not None and len(reflections) > 0:
+                logger.info(
+                    f"Masking {len(reflections)} reflection regions with border={border}"
+                )
+
+                # Get reflection centroids
+                if "xyzobs.px.value" in reflections:
+                    centroids = reflections["xyzobs.px.value"]
+                elif "xyzcal.px" in reflections:
+                    centroids = reflections["xyzcal.px"]
+                else:
+                    logger.warning(
+                        "No centroid data found in reflections, using all-unmasked mask"
+                    )
+                    return tuple(panel_masks)
+
+                # Get panel assignments if available
+                if "panel" in reflections:
+                    panels = reflections["panel"]
+                else:
+                    # Assume all reflections are on panel 0
+                    panels = flex.int(len(reflections), 0)
+
+                # Mask around each reflection
+                for i in range(len(reflections)):
+                    centroid = centroids[i]
+                    panel_id = panels[i]
+
+                    if panel_id >= len(panel_masks):
+                        continue
+
+                    # Get integer pixel coordinates
+                    x_center = int(round(centroid[0]))
+                    y_center = int(round(centroid[1]))
+
+                    # Define masking region around the centroid
+                    y_min = max(0, y_center - border)
+                    y_max = min(panel_masks[panel_id].all()[0], y_center + border + 1)
+                    x_min = max(0, x_center - border)
+                    x_max = min(panel_masks[panel_id].all()[1], x_center + border + 1)
+
+                    # Mask the region (set to False)
+                    for y in range(y_min, y_max):
+                        for x in range(x_min, x_max):
+                            panel_masks[panel_id][y, x] = False
+
+                # Count masked pixels for logging
+                total_masked = sum((~mask).count(True) for mask in panel_masks)
+                logger.info(f"Masked {total_masked} pixels around Bragg reflections")
+            else:
+                logger.info("No reflections provided, using all-unmasked Bragg mask")
+
+            return tuple(panel_masks)
 
         except Exception as e:
-            raise DIALSError(f"DIALS generate_mask call failed: {e}")
+            raise DIALSError(f"Bragg mask generation failed: {e}")
+
+    def _create_phil_params(self, mask_generation_params: Dict[str, Any]) -> object:
+        """
+        Convert mask generation parameters dict to PHIL object.
+
+        Args:
+            mask_generation_params: Dictionary of mask generation parameters
+
+        Returns:
+            PHIL parameters object suitable for dials.util.masking.generate_mask
+
+        Raises:
+            DIALSError: When PHIL object creation fails
+        """
+        try:
+            # Create PHIL string from parameters dict
+            phil_string_parts = []
+
+            # Handle border parameter
+            if "border" in mask_generation_params:
+                phil_string_parts.append(f"border = {mask_generation_params['border']}")
+
+            # Handle other supported parameters (can be extended as needed)
+            if "d_min" in mask_generation_params:
+                phil_string_parts.append(f"d_min = {mask_generation_params['d_min']}")
+
+            if "d_max" in mask_generation_params:
+                phil_string_parts.append(f"d_max = {mask_generation_params['d_max']}")
+
+            # Create the full PHIL string
+            phil_string = "\n".join(phil_string_parts)
+
+            # Parse the PHIL string and extract parameters
+            current_phil = generate_mask_phil_scope.fetch(phil_parse(phil_string))
+            phil_params_object = current_phil.extract()
+
+            return phil_params_object
+
+        except Exception as e:
+            raise DIALSError(f"Failed to create PHIL parameters object: {e}")
 
     def _validate_mask_result(self, mask_result: object) -> None:
         """
