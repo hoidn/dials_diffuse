@@ -99,3 +99,26 @@ The final phase of the pipeline will focus on placing the merged data onto an ab
 *   **Absolute Scaling:** The relatively-scaled diffuse map will be converted to absolute units ( electron units per unit cell). This will be achieved by matching the total experimental scattering (diffuse + Bragg) to the total theoretical scattering from a known unit cell composition, using the Krogh-Moe/Norman summation method.
 *   **Incoherent Subtraction:** The theoretical incoherent (Compton) scattering background will be calculated from the sample composition and subtracted from the absolute-scaled map.
 *   **Final Output:** The result will be the final, absolutely-scaled 3D diffuse scattering map, ready for analysis.
+
+## Implementation and Library usage
+We combine custom code with the DIALS/CCTBX/DXTBX ecosystem:
+
+| Phase | Module / Step | Description | Primary Logic | Core Toolkit / API |
+| :---- | :--- | :---------- | :--- | :--- |
+| **Phase 1** | **Data Type Detection** | Determines if data is stills or sequence from CBF header. | **Custom** | `dxtbx.load` |
+| | **Crystallographic Processing** | Spot finding, indexing, and geometric refinement. | **DIALS** | `dials.stills_process` / DIALS CLI |
+| | **Geometric Validation** | Q-vector consistency check ($\mathbf{q}_{\text{model}}$ vs $\mathbf{q}_{\text{observed}}$). | **Custom** | `dxtbx.model` |
+| | **Static/Dynamic Masking** | Creates masks for bad pixels, gaps, and beamstop. | **Custom** | `dxtbx.model.Detector` |
+| | **Bragg Mask Generation** | Creates masks to exclude Bragg peak regions for each still. | **DIALS / Custom** | `dials.util.masking` or Custom shoebox logic |
+| **Phase 2** | **Q-Vector Calculation** | Computes scattering vector $\mathbf{q}$ for each diffuse pixel. | **Custom** | `dxtbx.model` |
+| | **LP & QE Corrections** | Applies Lorentz-Polarization & Quantum Efficiency factors. | **DIALS** | `dials.algorithms.integration.Corrections` |
+| | **Solid Angle ($\Omega$) Correction** | Applies solid angle correction factor to pixel intensities. | **Custom** | `dxtbx.model.Panel` |
+| | **Air Attenuation Correction** | Applies air absorption correction using Beer-Lambert law. | **Custom** | `cctbx.eltbx` |
+| **Phase 3** | **Global Grid Definition** | Averages crystal models to define a common 3D grid. | **Custom** | `cctbx.uctbx` & `dxtbx.model` |
+| | **Voxel Accumulation** | Bins corrected diffuse pixels into the global grid. | **Custom** | `h5py` & `cctbx.sgtbx` |
+| | **Relative Scaling Model** | Defines the mathematical model for inter-still scaling. | **Custom** | `dials.algorithms.scaling.model` |
+| | **Scaling Parameter Refinement** | Refines scale factors to minimize intensity discrepancies. | **Custom** | `scitbx.lstbx` |
+| | **Data Merging** | Performs inverse-variance weighted merge of scaled data. | **Custom** | `numpy` |
+| **Phase 4** | **Absolute Scale Calculation** | Determines absolute scale factor via Krogh-Moe summation. | *(Pending)* | `cctbx.eltbx` |
+| *(Pending)* | **Incoherent Subtraction** | Calculates and subtracts Compton scattering background. | *(Pending)* | `cctbx.eltbx` |
+
