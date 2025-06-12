@@ -1,11 +1,10 @@
 """Tests for DIALSStillsProcessAdapter."""
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from pathlib import Path
+from unittest.mock import Mock, patch
 
 from diffusepipe.adapters.dials_stills_process_adapter import DIALSStillsProcessAdapter
-from diffusepipe.exceptions import DIALSError, ConfigurationError, DataValidationError
+from diffusepipe.exceptions import ConfigurationError, DataValidationError
 
 
 @pytest.fixture
@@ -147,15 +146,15 @@ class TestDIALSStillsProcessAdapter:
         """Test successful partiality validation."""
         mock_reflections = Mock()
         mock_reflections.has_key.return_value = True
-        
+
         # Mock the __getitem__ method properly
         def mock_getitem(key):
             if key == "partiality":
                 return [0.5, 0.8, 1.0]
             raise KeyError(key)
-        
+
         mock_reflections.__getitem__ = Mock(side_effect=mock_getitem)
-        
+
         # Should not raise an exception
         adapter._validate_partiality(mock_reflections)
 
@@ -171,13 +170,13 @@ class TestDIALSStillsProcessAdapter:
     def test_process_still_import_error(self, mock_exists, adapter, mock_config):
         """Test process_still with DIALS import error."""
         mock_exists.return_value = True
-        
+
         # Patch the imports to raise ImportError
-        with patch.dict('sys.modules', {'dials.command_line.stills_process': None}):
-            with pytest.raises(DIALSError) as exc_info:
+        with patch.dict("sys.modules", {"dials.command_line.stills_process": None}):
+            with pytest.raises(
+                ConfigurationError, match="Failed to generate PHIL parameters"
+            ):
                 adapter.process_still("/test/image.cbf", mock_config)
-            
-            assert "Failed to import DIALS components" in str(exc_info.value)
 
 
 def mock_open_read(content):

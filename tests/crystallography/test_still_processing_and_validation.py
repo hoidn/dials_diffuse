@@ -5,9 +5,7 @@ These tests focus on the integration between StillProcessorAndValidatorComponent
 DIALSStillsProcessAdapter, and ModelValidator, following the testing principles from plan.md.
 """
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-from pathlib import Path
+from unittest.mock import Mock, patch
 
 from diffusepipe.crystallography.still_processing_and_validation import (
     StillProcessorAndValidatorComponent,
@@ -16,13 +14,10 @@ from diffusepipe.crystallography.still_processing_and_validation import (
     create_default_config,
     create_default_extraction_config,
 )
-import numpy as np
 from diffusepipe.types.types_IDL import (
     DIALSStillsProcessConfig,
-    OperationOutcome,
     ExtractionConfig,
 )
-from diffusepipe.exceptions import DIALSError, ConfigurationError, DataValidationError
 
 
 class TestStillProcessorAndValidatorComponent:
@@ -93,7 +88,10 @@ class TestStillProcessorAndValidatorComponent:
 
                 # Verify adapter and validator were called
                 mock_adapter.process_still.assert_called_once_with(
-                    image_path=self.test_image_path, config=config, base_expt_path=None
+                    image_path=self.test_image_path,
+                    config=config,
+                    base_expt_path=None,
+                    output_dir_final=None,
                 )
                 mock_validate.assert_called_once_with(
                     experiment=mock_experiment,
@@ -431,7 +429,6 @@ class TestModelValidator:
                     assert metrics.pdb_cell_passed is False
                     assert metrics.pdb_orientation_passed is True
                     assert metrics.q_consistency_passed is True
-
 
     def test_check_q_consistency_ideal_match(self):
         """Test Q-vector consistency check with ideal synthetic data."""
@@ -776,7 +773,6 @@ class TestPDBConsistencyCheck:
     def test_check_pdb_consistency_cell_match(self):
         """Test PDB consistency check with matching unit cell parameters."""
         # Arrange
-        from unittest.mock import PropertyMock
 
         mock_experiment = Mock()
         mock_crystal = Mock()

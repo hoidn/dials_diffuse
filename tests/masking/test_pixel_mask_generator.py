@@ -50,29 +50,20 @@ class TestPixelMaskGenerator:
         assert len(result) == 1
         # Check that we got a valid flex.bool object
         from dials.array_family import flex
+
         assert isinstance(result[0], flex.bool)
         # Check the mask has the expected size (50 * 100 = 5000 pixels)
         assert result[0].size() == 5000
 
-    @patch("diffusepipe.masking.pixel_mask_generator.flex")
-    def test_generate_static_mask_with_beamstop(self, mock_flex):
-        """Test static mask generation with circular beamstop."""
+    def test_generate_static_mask_with_beamstop(self):
+        """Test static mask generation with circular beamstop using real flex arrays."""
         # Arrange
         mock_detector = Mock()
         mock_panel = Mock()
         mock_panel.get_image_size.return_value = (100, 50)
-        mock_detector.__iter__ = Mock(return_value=iter([mock_panel]))
+
+        mock_detector.__iter__ = MagicMock(side_effect=lambda: iter([mock_panel]))
         mock_detector.__len__ = Mock(return_value=1)
-
-        # Mock flex operations
-        mock_mask = Mock()
-        mock_beamstop_mask = Mock()
-        mock_flex.bool.side_effect = [mock_mask, mock_beamstop_mask]
-        mock_flex.grid.return_value = Mock()
-
-        # Mock the logical operations
-        mock_mask.__and__ = Mock(return_value=mock_mask)
-        mock_beamstop_mask.__invert__ = Mock(return_value=mock_beamstop_mask)
 
         beamstop = Circle(center_x=50, center_y=25, radius=10)
         static_params = StaticMaskParams(beamstop=beamstop)
@@ -83,12 +74,15 @@ class TestPixelMaskGenerator:
         # Assert
         assert result is not None
         assert len(result) == 1
-        # Verify beamstop mask was applied
-        mock_mask.__and__.assert_called()
+        # Check that the beamstop region is masked
+        from dials.array_family import flex
 
-    @patch("diffusepipe.masking.pixel_mask_generator.flex")
-    def test_generate_static_mask_with_untrusted_panels(self, mock_flex):
-        """Test static mask generation with untrusted panels."""
+        assert isinstance(result[0], flex.bool)
+        # Count of False pixels should be > 0 due to beamstop
+        assert result[0].count(False) > 0
+
+    def test_generate_static_mask_with_untrusted_panels(self):
+        """Test static mask generation with untrusted panels using real flex arrays."""
         # Arrange
         mock_detector = Mock()
         mock_panel1 = Mock()
@@ -98,12 +92,6 @@ class TestPixelMaskGenerator:
         mock_detector.__iter__ = Mock(return_value=iter([mock_panel1, mock_panel2]))
         mock_detector.__len__ = Mock(return_value=2)
 
-        mock_mask1 = Mock()
-        mock_mask2 = Mock()
-        mock_false_mask = Mock()
-        mock_flex.bool.side_effect = [mock_mask1, mock_mask2, mock_false_mask]
-        mock_flex.grid.return_value = Mock()
-
         static_params = StaticMaskParams(untrusted_panels=[1])  # Panel 1 is untrusted
 
         # Act
@@ -112,18 +100,25 @@ class TestPixelMaskGenerator:
         # Assert
         assert result is not None
         assert len(result) == 2
-        assert result[0] is mock_mask1  # Panel 0 uses normal mask
-        assert result[1] is mock_false_mask  # Panel 1 gets all-False mask
+        from dials.array_family import flex
+
+        # Panel 0 should have some True pixels
+        assert isinstance(result[0], flex.bool)
+        assert result[0].count(True) > 0
+        # Panel 1 should be all False (untrusted)
+        assert isinstance(result[1], flex.bool)
+        assert result[1].count(True) == 0  # All pixels should be False
 
     def test_generate_dynamic_mask_no_images(self):
         """Test dynamic mask generation with no representative images using real flex arrays."""
         # Arrange
         from dials.array_family import flex
-        
+
         mock_detector = Mock()
         mock_panel = Mock()
         mock_panel.get_image_size.return_value = (100, 50)
-        mock_detector.__iter__ = Mock(return_value=iter([mock_panel]))
+
+        mock_detector.__iter__ = MagicMock(side_effect=lambda: iter([mock_panel]))
 
         representative_images = []
         dynamic_params = DynamicMaskParams()
@@ -149,7 +144,8 @@ class TestPixelMaskGenerator:
         mock_detector = Mock()
         mock_panel = Mock()
         mock_panel.get_image_size.return_value = (4, 4)  # Small for testing
-        mock_detector.__iter__ = Mock(return_value=iter([mock_panel]))
+
+        mock_detector.__iter__ = MagicMock(side_effect=lambda: iter([mock_panel]))
 
         # Mock image data
         mock_image_set = Mock()
@@ -168,6 +164,17 @@ class TestPixelMaskGenerator:
         )
 
         mock_np.array.return_value = test_array
+
+        # Mock numpy zeros and full to return arrays with shape attribute
+        mock_zeros = MagicMock()
+        mock_zeros.shape = (4, 4)
+        mock_np.zeros.return_value = mock_zeros
+
+        mock_full = MagicMock()
+        mock_full.shape = (4, 4)
+        mock_np.full.return_value = mock_full
+
+        mock_np.inf = float("inf")
 
         # Mock flex operations
         mock_mask = Mock()
@@ -232,12 +239,14 @@ class TestPixelMaskGenerator:
         """Test application of circular beamstop mask using real flex arrays."""
         # Arrange
         from dials.array_family import flex
-        
+
         mock_panel = Mock()
         mock_panel.get_image_size.return_value = (6, 6)
 
         # Create real flex arrays
-        initial_mask_array = flex.bool(flex.grid(6, 6), True)  # All pixels initially good
+        initial_mask_array = flex.bool(
+            flex.grid(6, 6), True
+        )  # All pixels initially good
         beamstop = Circle(center_x=3, center_y=3, radius=1)
 
         # Act
@@ -258,12 +267,14 @@ class TestPixelMaskGenerator:
         """Test application of rectangular beamstop mask using real flex arrays."""
         # Arrange
         from dials.array_family import flex
-        
+
         mock_panel = Mock()
         mock_panel.get_image_size.return_value = (10, 10)
 
         # Create real flex arrays
-        initial_mask_array = flex.bool(flex.grid(10, 10), True)  # All pixels initially good
+        initial_mask_array = flex.bool(
+            flex.grid(10, 10), True
+        )  # All pixels initially good
         beamstop = Rectangle(min_x=2, max_x=5, min_y=3, max_y=6)
 
         # Act
@@ -374,33 +385,15 @@ class TestIntegrationScenarios:
         """Set up test fixtures."""
         self.generator = PixelMaskGenerator()
 
-    @patch("diffusepipe.masking.pixel_mask_generator.flex")
-    @patch("diffusepipe.masking.pixel_mask_generator.np")
-    def test_generate_combined_pixel_mask_success(self, mock_np, mock_flex):
-        """Test successful generation of combined pixel mask."""
+    def test_generate_combined_pixel_mask_success(self):
+        """Test successful generation of combined pixel mask using real flex arrays."""
         # Arrange
         mock_detector = Mock()
         mock_panel = Mock()
         mock_panel.get_image_size.return_value = (4, 4)
-        mock_detector.__iter__ = Mock(return_value=iter([mock_panel]))
+
+        mock_detector.__iter__ = MagicMock(side_effect=lambda: iter([mock_panel]))
         mock_detector.__len__ = Mock(return_value=1)
-
-        # Mock static mask generation
-        mock_static_mask = Mock()
-        mock_static_mask.count.return_value = 15
-        mock_static_mask.__len__ = Mock(return_value=16)
-
-        # Mock dynamic mask generation
-        mock_dynamic_mask = Mock()
-        mock_dynamic_mask.count.return_value = 14
-
-        # Mock combined result
-        mock_combined_mask = Mock()
-        mock_combined_mask.count.return_value = 13
-        mock_static_mask.__and__ = Mock(return_value=mock_combined_mask)
-
-        mock_flex.bool.return_value = mock_static_mask
-        mock_flex.grid.return_value = Mock()
 
         static_params = StaticMaskParams()
         representative_images = []  # Empty for simplicity
@@ -414,7 +407,11 @@ class TestIntegrationScenarios:
         # Assert
         assert result is not None
         assert len(result) == 1
-        assert result[0] is mock_combined_mask
+        from dials.array_family import flex
+
+        assert isinstance(result[0], flex.bool)
+        # Should have 16 pixels (4x4)
+        assert result[0].size() == 16
 
     def test_generate_combined_pixel_mask_error_handling(self):
         """Test error handling in combined mask generation."""

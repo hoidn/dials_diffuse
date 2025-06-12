@@ -69,9 +69,10 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
 
 **4. Visual Diagnostics & Testing**
 
-*   **Visual Diagnostics Guide:** See `VISUAL_DIAGNOSTICS_GUIDE.md` for comprehensive documentation on visual verification tools for Phase 2 data extraction.
+*   **Visual Diagnostics Guide:** See `docs/VISUAL_DIAGNOSTICS_GUIDE.md` for comprehensive documentation on visual verification tools for Phase 2 data extraction.
 *   **End-to-End Testing:** Use `scripts/dev_workflows/run_phase2_e2e_visual_check.py` for complete pipeline verification.
 *   **Diagnostic Tools:** Use `scripts/visual_diagnostics/check_diffuse_extraction.py` for detailed analysis of extraction outputs.
+*   **DIALS Debugging:** See `docs/06_DIALS_DEBUGGING_GUIDE.md` for troubleshooting DIALS integration issues.
 
 ---
 
@@ -141,31 +142,56 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
 *   **`src/` (source root):** Main application source code.
     *   `src/diffusepipe/`: Primary package
         *   `__init__.py`
+        *   `adapters/`: DIALS/DXTBX API wrappers
+            *   `dials_stills_process_adapter.py` and `*_IDL.md`
+            *   `dials_sequence_process_adapter.py` and `*_IDL.md`
+            *   `dials_generate_mask_adapter.py` and `*_IDL.md`
+            *   `dxtbx_io_adapter.py` and `*_IDL.md`
         *   `config/`: Configuration files (PHIL files)
             *   `find_spots.phil`
             *   `refine_detector.phil`
+            *   `sequence_*_default.phil` files
+        *   `crystallography/`: Crystal model processing and validation
+            *   `q_consistency_checker.py` and `*_IDL.md`
+            *   `still_processing_and_validation.py` and `*_IDL.md`
         *   `diagnostics/`: Diagnostic tools
-            *   `__init__.py`
-            *   `q_calculator.py`
-            *   `q_calculator_IDL.md`
+            *   `q_calculator.py` and `*_IDL.md`
         *   `extraction/`: Data extraction components
-            *   `__init__.py`
-            *   `data_extractor_IDL.md`
+            *   `data_extractor.py` and `*_IDL.md`
+        *   `masking/`: Pixel and Bragg mask generation
+            *   `pixel_mask_generator.py` and `*_IDL.md`
+            *   `bragg_mask_generator.py` and `*_IDL.md`
         *   `orchestration/`: Pipeline coordination
-            *   `__init__.py`
             *   `pipeline_orchestrator_IDL.md`
+            *   `stills_pipeline_orchestrator_IDL.md`
         *   `types/`: Data type definitions
-            *   `__init__.py`
-            *   `types_IDL.md`
+            *   `types_IDL.py` and `types_IDL.md`
+        *   `utils/`: Utility functions
+            *   `cbf_utils.py`
     *   `src/scripts/`: Processing scripts
         *   `process_pipeline.sh`: Main processing script
+*   **`scripts/`**: Development and diagnostic scripts
+    *   `scripts/dev_workflows/run_phase2_e2e_visual_check.py`: End-to-end pipeline verification
+    *   `scripts/visual_diagnostics/check_diffuse_extraction.py`: Diagnostic plot generation
+*   **`tests/`**: Test suite (integration-focused)
+    *   Mirrors `src/` structure for easy navigation
+    *   `tests/data/`: Test data files
+*   **`libdocs/`**: External library documentation
+    *   `libdocs/dials/`: DIALS/CCTBX/DXTBX documentation
+*   **Project Configuration:**
+    *   `CLAUDE.md`: Instructions for Claude AI assistant
+    *   `plan.md`: Master technical implementation specification
+    *   `pyproject.toml`: Python project configuration
 *   **`docs/`**: All project documentation.
-    *   `docs/00_START_HERE.md`: This file
+    *   `docs/00_START_HERE.md`: This file (developer onboarding guide)
     *   `docs/01_IDL_GUIDELINES.md`: IDL structure and syntax guidelines
     *   `docs/02_IMPLEMENTATION_RULES.md`: Code implementation standards
     *   `docs/03_PROJECT_RULES.md`: Project workflow and organization
     *   `docs/04_REFACTORING_GUIDE.md`: Guidelines for code refactoring
     *   `docs/05_DOCUMENTATION_GUIDE.md`: Documentation standards
+    *   `docs/06_DIALS_DEBUGGING_GUIDE.md`: DIALS integration troubleshooting
+    *   `docs/VISUAL_DIAGNOSTICS_GUIDE.md`: Visual verification tools for Phase 2
+    *   `docs/LESSONS_LEARNED.md`: Project development insights
     *   `docs/ARCHITECTURE/`: Architecture documentation
         *   `adr/`: Architecture Decision Records
         *   `types.md`: Shared data structure definitions

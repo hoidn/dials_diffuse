@@ -394,8 +394,8 @@ def run_phase1_mask_generation(
     # 2.4: Total Diffuse Mask Generation
     logger.info("Generating total diffuse mask...")
     total_diffuse_mask_tuple = bragg_generator.get_total_mask_for_still(
-        bragg_mask_tuple=bragg_mask_tuple,
-        global_pixel_mask_tuple=global_pixel_mask_tuple,
+        bragg_mask=bragg_mask_tuple,
+        global_pixel_mask=global_pixel_mask_tuple,
     )
 
     # Save total diffuse mask

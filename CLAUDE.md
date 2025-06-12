@@ -122,98 +122,23 @@ bash src/scripts/process_pipeline.sh path/to/image.cbf --external_pdb path/to/re
 
 ## Debugging the Pipeline
 
-### Test Suite Remediation Patterns
+For comprehensive debugging guidance, see `docs/06_DIALS_DEBUGGING_GUIDE.md`.
 
-**Mock Strategy Evolution:**
+### Key Debugging Principles
+
+**Test Suite Remediation Patterns:**
 - Use `MagicMock` instead of `Mock` for DIALS objects that need magic method support (`__getitem__`, `__and__`, `__or__`)
 - Replace complex mocking with real DIALS `flex` arrays for authentic integration testing
 - Only mock external APIs with usage limits or complex infrastructure requirements
 
-**DIALS API Compatibility Patterns:**
-- DIALS API changes frequently - common issues include:
-  - PHIL scope imports: `master_phil_scope` → `phil_scope`
-  - Method signature changes in processing adapters
-  - Import path modifications for DIALS components
-- Fix approach: Update import statements and verify method signatures against current DIALS version
-
-**Error Handling Enhancement:**
-- Use realistic bounds for detector geometry assertions (e.g., solid angle corrections < 3e6, not < 1e6)
-- Implement proper divide-by-zero protection in correction calculations
-- Add graceful degradation for edge cases with appropriate fallback values
-
-**Test Failure Resolution Strategy:**
-1. Identify failure category (DIALS API, mocking, bounds, imports)
-2. Apply targeted fixes rather than wholesale changes
-3. Verify syntax after each change: `python -m py_compile file.py`
-4. Test with real DIALS components when possible
-5. Update test expectations based on realistic detector geometries
-
-### DIALS Integration Issues (Critical)
-
-**Root Cause: Stills vs Sequences Processing**
-- CBF files with 0.1° oscillation data MUST be processed as sequences, not stills
-- `dials.stills_process` fails on oscillation data - use sequential workflow instead
-- Key indicator: Check CBF header for `Angle_increment` > 0 (e.g., 0.1000 deg)
-
-**Correct DIALS Workflow for Oscillation Data:**
-```python
-# Use sequential CLI-based approach, not stills_process
-# 1. dials.import -> 2. dials.find_spots -> 3. dials.index -> 4. dials.integrate
-```
-
-**Critical PHIL Parameters:**
-- `spotfinder.filter.min_spot_size=3` (not default 2)
-- `spotfinder.threshold.algorithm=dispersion` (not default)
-- `indexing.method=fft3d` (not fft1d)
-- `geometry.convert_sequences_to_stills=false` (preserve oscillation)
-
-**DIALS API Import Fixes:**
-```python
-# Correct indexer import (frequently breaks):
-from dials.algorithms.indexing import indexer
-indexer_obj = indexer.Indexer.from_parameters(reflections, experiments, params=self._extracted_params)
-```
-
-**Unit Cell Consistency Issues:**
-- Problem: DIALS refines unit cell during indexing, often finding alternative triclinic settings with different angular parameters
-- Solution: Use `refinement.parameterisation.crystal.fix=cell` in dials.index when known unit cell is provided
-- Implementation: DIALSSequenceProcessAdapter automatically applies cell fixing when config.known_unit_cell is set
-- Note: PDB symmetry is automatically extracted and used as known_unit_cell/known_space_group in sequence processing
-
-**Q-Vector Validation Issues (Module 1.S.1.Validation):**
-- The primary geometric validation compares model-derived q-vectors (`q_model`) with those recalculated from observed pixel positions (`q_observed`).
-- **Goal:** This Q-vector validation method *must be made robust and reliable*. Discrepancies (`|Δq|`) should typically be < 0.01 Å⁻¹.
-- **Common Problem:** Large discrepancies in `|Δq|` often indicate issues in the coordinate transformations or in how `q_model` or `q_observed` are calculated within the validation logic. Debugging should focus on fixing these calculations.
-- **Alternative (Debug/Fallback):** Simple pixel position validation (`|observed_px - calculated_px|`, tolerance ~1-2 pixels) can be a useful *debugging tool* or a simpler *fallback check* if Q-vector validation proves persistently problematic, but it is *not* the primary planned validation method.
-
-**Configuration Structure Issues:**
-- Error pattern: `'dict' object has no attribute 'spotfinder_threshold_algorithm'`
-- Cause: Configuration object structure mismatch between expected and actual types
-- Fix: Verify configuration object creation and attribute access patterns
-
-**Data Type Detection Failures:**
-- Log pattern: `sweep: 1` vs `still: 0` in DIALS import output
-- Indicates: CBF contains sequence data requiring `DIALSSequenceProcessAdapter`
-- Debug: Check CBF header `Angle_increment` value and routing logic
-
-### General DIALS Debugging
-
-- For DIALS processing issues (Step 1), check the logs produced by the DIALS adapter and compare with working manual DIALS logs
-- Common issues:
-  - **Wrong processing mode**: Using stills_process on oscillation data
-  - **PHIL parameter mismatch**: Default parameters often don't work
-  - **API import errors**: DIALS Python API imports change frequently
-  - **Insufficient spots**: Check spot finding parameters and algorithms
-- For Bragg mask generation (Step 2), check `dials.generate_mask.log` if applicable
-- Python script issues (Step 3 onwards) can be debugged using Python's logging and debugging tools (e.g., with `--verbose` if the orchestrator supports it)
-
-### Debugging Workflow
-
-1. **Check CBF headers** for oscillation data vs stills
+**Quick DIALS Troubleshooting:**
+1. **Check CBF headers** for oscillation data vs stills (`Angle_increment` value)
 2. **Compare with working DIALS logs** in existing processing directories
-3. **Verify PHIL parameters** match working approach
+3. **Verify PHIL parameters** match working approach (see critical parameters in debugging guide)
 4. **Test DIALS API imports** independently
 5. **Use CLI-based adapters** as fallback for API issues
+
+**Primary Validation Method:** Q-vector consistency checking (`|Δq|` typically < 0.01 Å⁻¹)
 
 ## Pipeline Steps and Expected Outputs
 1. **DIALS Stills Processing (via `dials.stills_process` Python API Adapter)**

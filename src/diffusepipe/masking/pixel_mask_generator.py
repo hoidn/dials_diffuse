@@ -415,7 +415,13 @@ class PixelMaskGenerator:
                     continue
 
                 # Convert flex array to numpy for vectorized operations
-                panel_array = np.array(panel_data).astype(np.float64)
+                # Convert flex array to numpy array properly to maintain 2D shape
+                if hasattr(panel_data, 'as_numpy_array'):
+                    # DIALS flex array - use proper conversion method
+                    panel_array = panel_data.as_numpy_array().astype(np.float64)
+                else:
+                    # Already a numpy array
+                    panel_array = np.array(panel_data).astype(np.float64)
 
                 stats = panel_stats[panel_idx]
 

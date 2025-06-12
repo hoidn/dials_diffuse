@@ -6,15 +6,14 @@ DIALSStillsProcessAdapter, following the testing principles from plan.md.
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from pathlib import Path
+from unittest.mock import Mock, patch
 
 from diffusepipe.crystallography.still_processing_and_validation import (
     StillProcessorComponent,
     create_default_config,
 )
-from diffusepipe.types.types_IDL import DIALSStillsProcessConfig, OperationOutcome
-from diffusepipe.exceptions import DIALSError, ConfigurationError, DataValidationError
+from diffusepipe.types.types_IDL import DIALSStillsProcessConfig
+from diffusepipe.exceptions import DIALSError, ConfigurationError
 
 
 class TestStillProcessorComponent:
@@ -40,7 +39,9 @@ class TestStillProcessorComponent:
 
         # Mock the routing to return stills adapter and the process_still method
         with patch.object(self.processor, "_determine_processing_route") as mock_route:
-            with patch.object(self.processor.stills_adapter, "process_still") as mock_process:
+            with patch.object(
+                self.processor.stills_adapter, "process_still"
+            ) as mock_process:
                 mock_route.return_value = ("stills", self.processor.stills_adapter)
                 mock_process.return_value = (
                     mock_experiment,
@@ -68,7 +69,10 @@ class TestStillProcessorComponent:
 
                 # Verify adapter was called with correct parameters
                 mock_process.assert_called_once_with(
-                    image_path=self.test_image_path, config=config, base_expt_path=None
+                    image_path=self.test_image_path,
+                    config=config,
+                    base_expt_path=None,
+                    output_dir_final=None,
                 )
 
     def test_process_still_with_base_experiment(self):
@@ -82,7 +86,9 @@ class TestStillProcessorComponent:
         mock_reflections.has_key = Mock(return_value=True)
 
         with patch.object(self.processor, "_determine_processing_route") as mock_route:
-            with patch.object(self.processor.stills_adapter, "process_still") as mock_process:
+            with patch.object(
+                self.processor.stills_adapter, "process_still"
+            ) as mock_process:
                 mock_route.return_value = ("stills", self.processor.stills_adapter)
                 mock_process.return_value = (
                     mock_experiment,
@@ -104,6 +110,7 @@ class TestStillProcessorComponent:
                     image_path=self.test_image_path,
                     config=config,
                     base_expt_path=base_expt_path,
+                    output_dir_final=None,
                 )
 
     def test_process_still_indexing_failure(self):
@@ -112,7 +119,9 @@ class TestStillProcessorComponent:
         config = create_default_config()
 
         with patch.object(self.processor, "_determine_processing_route") as mock_route:
-            with patch.object(self.processor.stills_adapter, "process_still") as mock_process:
+            with patch.object(
+                self.processor.stills_adapter, "process_still"
+            ) as mock_process:
                 mock_route.return_value = ("stills", self.processor.stills_adapter)
                 mock_process.return_value = (None, None, False, "Indexing failed")
 
@@ -132,7 +141,9 @@ class TestStillProcessorComponent:
         config = create_default_config()
 
         with patch.object(self.processor, "_determine_processing_route") as mock_route:
-            with patch.object(self.processor.stills_adapter, "process_still") as mock_process:
+            with patch.object(
+                self.processor.stills_adapter, "process_still"
+            ) as mock_process:
                 mock_route.return_value = ("stills", self.processor.stills_adapter)
                 mock_process.side_effect = DIALSError("DIALS internal error")
 
@@ -148,7 +159,9 @@ class TestStillProcessorComponent:
         config = create_default_config()
 
         with patch.object(self.processor, "_determine_processing_route") as mock_route:
-            with patch.object(self.processor.stills_adapter, "process_still") as mock_process:
+            with patch.object(
+                self.processor.stills_adapter, "process_still"
+            ) as mock_process:
                 mock_route.return_value = ("stills", self.processor.stills_adapter)
                 mock_process.side_effect = ConfigurationError("Invalid configuration")
 
@@ -164,7 +177,9 @@ class TestStillProcessorComponent:
         config = create_default_config()
 
         with patch.object(self.processor, "_determine_processing_route") as mock_route:
-            with patch.object(self.processor.stills_adapter, "process_still") as mock_process:
+            with patch.object(
+                self.processor.stills_adapter, "process_still"
+            ) as mock_process:
                 mock_route.return_value = ("stills", self.processor.stills_adapter)
                 mock_process.side_effect = RuntimeError("Unexpected runtime error")
 
@@ -173,7 +188,6 @@ class TestStillProcessorComponent:
                     self.processor.process_still(
                         image_path=self.test_image_path, config=config
                     )
-
 
 
 class TestCreateDefaultConfig:

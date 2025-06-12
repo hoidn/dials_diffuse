@@ -5,9 +5,7 @@ This test demonstrates the complete Phase 1 pipeline from still processing
 through mask generation, validating the integration between all components.
 """
 
-import pytest
 from unittest.mock import Mock, patch, MagicMock
-from pathlib import Path
 
 from diffusepipe.crystallography.still_processing_and_validation import (
     StillProcessorAndValidatorComponent,
@@ -51,7 +49,8 @@ class TestPhase1Workflow:
         mock_detector = Mock()
         mock_panel = Mock()
         mock_panel.get_image_size.return_value = (100, 50)
-        mock_detector.__iter__ = Mock(return_value=iter([mock_panel]))
+
+        mock_detector.__iter__ = MagicMock(side_effect=lambda: iter([mock_panel]))
         mock_detector.__len__ = Mock(return_value=1)
         mock_experiment.detector = mock_detector
 
@@ -63,8 +62,13 @@ class TestPhase1Workflow:
         mock_image_set = Mock()
         # Create a real numpy array for panel data that can be processed
         import numpy as np
-        mock_panel_data_instance = np.ones((50, 100), dtype=np.uint16) * 1000  # Realistic detector data
-        mock_image_set.get_raw_data.return_value = (mock_panel_data_instance,)  # Return tuple containing one panel
+
+        mock_panel_data_instance = (
+            np.ones((50, 100), dtype=np.uint16) * 1000
+        )  # Realistic detector data
+        mock_image_set.get_raw_data.return_value = (
+            mock_panel_data_instance,
+        )  # Return tuple containing one panel
         representative_images = [mock_image_set]
 
         # Remove flex mocking to allow real flex operations for internal workings
@@ -93,7 +97,10 @@ class TestPhase1Workflow:
                     ) as mock_gen_mask:
                         # Create a real flex array for the bragg mask
                         from dials.array_family import flex
-                        mock_bragg_mask = flex.bool(flex.grid(50, 100), True)  # Real flex array
+
+                        mock_bragg_mask = flex.bool(
+                            flex.grid(50, 100), True
+                        )  # Real flex array
                         mock_gen_mask.return_value = (
                             (mock_bragg_mask,),
                             True,
@@ -111,8 +118,7 @@ class TestPhase1Workflow:
                         # Assert Step 1
                         assert still_outcome.status == "SUCCESS"
                         assert (
-                            still_outcome.output_artifacts["validation_passed"]
-                            is True
+                            still_outcome.output_artifacts["validation_passed"] is True
                         )
 
                         # Act - Step 2: Generate global pixel mask
@@ -169,7 +175,9 @@ class TestPhase1Workflow:
 
         # Mock DIALS processing to succeed but validation to fail
         with patch.object(self.processor, "_determine_processing_route") as mock_route:
-            with patch.object(self.processor.stills_adapter, "process_still") as mock_process:
+            with patch.object(
+                self.processor.stills_adapter, "process_still"
+            ) as mock_process:
                 with patch.object(
                     self.processor.validator, "validate_geometry"
                 ) as mock_validate:
@@ -204,7 +212,9 @@ class TestPhase1Workflow:
 
         # Mock DIALS processing to fail
         with patch.object(self.processor, "_determine_processing_route") as mock_route:
-            with patch.object(self.processor.stills_adapter, "process_still") as mock_process:
+            with patch.object(
+                self.processor.stills_adapter, "process_still"
+            ) as mock_process:
                 mock_route.return_value = ("stills", self.processor.stills_adapter)
                 mock_process.return_value = (None, None, False, "DIALS failed")
 
@@ -231,7 +241,7 @@ class TestPhase1Workflow:
         mock_detector.__len__ = Mock(return_value=1)
 
         # Mock masks with compatible dimensions
-        with patch("diffusepipe.masking.bragg_mask_generator.flex") as mock_flex:
+        with patch("diffusepipe.masking.bragg_mask_generator.flex"):
             mock_pixel_mask = Mock()
             mock_pixel_mask.__len__ = Mock(return_value=5000)
             mock_bragg_mask = Mock()
