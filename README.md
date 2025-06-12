@@ -6,7 +6,7 @@ The output will be a merged 3D diffuse scattering map.
 
 ## Methodology 
 
-The approach follows Meisburger's published work. We use standard libraries wherever possible. Certain things -- especially background estimation -- need to be adapted to work with stills data. 
+The approach follows Meisburger's published work. We use standard libraries wherever possible. Certain things -- especially background estimation -- have been adapted to work with stills data. 
 
 
 ## Features
