@@ -45,7 +45,8 @@ module src.diffusepipe.adapters {
         tuple<object, object, boolean, string> process_still(
             string image_path,
             src.diffusepipe.types.DIALSStillsProcessConfig config,
-            optional string base_expt_path
+            optional string base_expt_path,
+            optional string output_dir_final
         );
     }
 }
