@@ -7,7 +7,7 @@ across representative still images.
 """
 
 import logging
-from typing import Dict, List, Optional, Tuple, Union, Any
+from typing import Dict, List, Optional, Tuple, Union
 from dataclasses import dataclass
 
 import numpy as np
@@ -404,8 +404,14 @@ class PixelMaskGenerator:
         """
         try:
             # Get raw data for this image
-            raw_data_result = image_set.get_raw_data(0)  # First (and only) image in the set
-            raw_data_iterable = raw_data_result if isinstance(raw_data_result, tuple) else (raw_data_result,)  # Ensure iterable
+            raw_data_result = image_set.get_raw_data(
+                0
+            )  # First (and only) image in the set
+            raw_data_iterable = (
+                raw_data_result
+                if isinstance(raw_data_result, tuple)
+                else (raw_data_result,)
+            )  # Ensure iterable
 
             for panel_idx, panel_data in enumerate(raw_data_iterable):
                 if panel_idx >= len(panel_stats):
@@ -416,7 +422,7 @@ class PixelMaskGenerator:
 
                 # Convert flex array to numpy for vectorized operations
                 # Convert flex array to numpy array properly to maintain 2D shape
-                if hasattr(panel_data, 'as_numpy_array'):
+                if hasattr(panel_data, "as_numpy_array"):
                     # DIALS flex array - use proper conversion method
                     panel_array = panel_data.as_numpy_array().astype(np.float64)
                 else:
