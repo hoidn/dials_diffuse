@@ -230,17 +230,18 @@ class DataExtractor:
             # Load image data
             from dxtbx.imageset import ImageSetFactory
 
-            imageset = ImageSetFactory.from_template(
-                inputs.cbf_image_path, image_range=(1, 1)
-            )
+            imagesets = ImageSetFactory.new([inputs.cbf_image_path])
+            if not imagesets:
+                raise ValueError(f"Failed to load image from {inputs.cbf_image_path}")
+            imageset = imagesets[0]
             image_data = imageset.get_raw_data(0)  # Get first (and only) image
 
             # Convert to numpy array if needed
-            if hasattr(image_data, "__len__") and len(image_data) > 1:
-                # Multi-panel detector - concatenate or handle appropriately
-                # For now, assume single panel
+            if isinstance(image_data, tuple):
+                # Multi-panel detector - use first panel for now
                 image_data = image_data[0].as_numpy_array()
             else:
+                # Single panel detector
                 image_data = image_data.as_numpy_array()
 
             # Load total mask (either passed in-memory or from file)
@@ -442,7 +443,9 @@ class DataExtractor:
 
                 # Calculate q-vector for this pixel
                 try:
-                    lab_coord = panel.get_pixel_lab_coord((fast_idx, slow_idx))
+                    lab_coord = panel.get_pixel_lab_coord(
+                        (float(fast_idx), float(slow_idx))
+                    )
                     scatter_direction = np.array(
                         [lab_coord[0], lab_coord[1], lab_coord[2]]
                     )
@@ -648,7 +651,9 @@ class DataExtractor:
         lab_coords = np.zeros((n_pixels, 3))
         for i in range(n_pixels):
             try:
-                lab_coord = panel.get_pixel_lab_coord((fast_coords[i], slow_coords[i]))
+                lab_coord = panel.get_pixel_lab_coord(
+                    (float(fast_coords[i]), float(slow_coords[i]))
+                )
                 lab_coords[i] = [lab_coord[0], lab_coord[1], lab_coord[2]]
             except Exception as e:
                 logger.debug(
