@@ -15,7 +15,7 @@ The approach follows Meisburger's published work. We use standard libraries wher
 *   **DIALS Integration**: Uses DIALS for spot finding, auto-indexing, geometric refinement, and integration.
 *   **Masking**: Generates static (beamstop, detector gaps), dynamic (hot/bad pixels), and per-still Bragg masks to isolate the diffuse signal.
 *   **corrections**: Applies a series of physical corrections to each diffuse pixel:
-    *   Lorentz-Polarization (LP) and Quantum Efficiency (QE) via the robust DIALS API.
+    *   Lorentz-Polarization (LP) and Quantum Efficiency (QE) via DIALS.
     *   Custom Solid Angle ($\Omega$) and Air Attenuation corrections.
 *   **Relative Scaling and Merging**: A custom scaling model, built on the DIALS framework, places all datasets on a common relative scale before merging them into a final 3D map via inverse-variance weighting.
 *   **Visual Diagnostics**: Includes scripts for visual verification of each processing step.
