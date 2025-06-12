@@ -32,11 +32,13 @@ matplotlib.use("Agg")  # Set early for non-interactive backend
 import matplotlib.pyplot as plt
 import numpy as np
 
+# Default maximum number of points to display in scatter plots for performance
+DEFAULT_MAX_SCATTER_POINTS = 100000
+
 # Import DIALS/DXTBX libraries
 try:
     from dxtbx.imageset import ImageSetFactory
     from dxtbx.model.experiment_list import ExperimentListFactory
-    from scitbx.array_family import flex
 except ImportError as e:
     print(f"Error importing DIALS/DXTBX libraries: {e}")
     print("Please ensure DIALS is properly installed and accessible.")
@@ -126,6 +128,12 @@ Examples:
         help="Output directory for diagnostic plots (default: extraction_visual_check)",
     )
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
+    parser.add_argument(
+        "--max-plot-points",
+        type=int,
+        default=DEFAULT_MAX_SCATTER_POINTS,
+        help="Maximum number of points to display in scatter plots for performance.",
+    )
 
     return parser.parse_args()
 
@@ -315,6 +323,7 @@ def plot_diffuse_pixel_overlay(
         spot_color="green",
         spot_size=1,
         log_scale=True,
+        max_points=None,  # Subsampling handled before calling this function
     )
 
     # Add additional overlays if provided
@@ -338,7 +347,10 @@ def plot_diffuse_pixel_overlay(
 
 
 def plot_q_projections(
-    q_vectors: np.ndarray, intensities: np.ndarray, output_dir: Path
+    q_vectors: np.ndarray,
+    intensities: np.ndarray,
+    output_dir: Path,
+    max_points: Optional[int] = DEFAULT_MAX_SCATTER_POINTS,
 ) -> None:
     """
     Generate Q-space projection plots.
@@ -347,8 +359,20 @@ def plot_q_projections(
         q_vectors: Array of shape (N, 3) with qx, qy, qz
         intensities: Array of shape (N,) with intensity values
         output_dir: Output directory for plots
+        max_points: Maximum number of points to plot for performance
     """
-    qx, qy, qz = q_vectors[:, 0], q_vectors[:, 1], q_vectors[:, 2]
+    # Apply subsampling if necessary
+    if max_points and len(q_vectors) > max_points:
+        indices = np.random.choice(len(q_vectors), max_points, replace=False)
+        q_subset = q_vectors[indices]
+        int_subset = intensities[indices]
+        sampled_note = f" (sampled {max_points} of {len(q_vectors)} points)"
+    else:
+        q_subset = q_vectors
+        int_subset = intensities
+        sampled_note = ""
+
+    qx, qy, qz = q_subset[:, 0], q_subset[:, 1], q_subset[:, 2]
 
     # Create three projection plots
     projections = [
@@ -361,12 +385,12 @@ def plot_q_projections(
         fig, ax = plt.subplots(figsize=(8, 6))
 
         scatter = ax.scatter(
-            x_data, y_data, c=intensities, cmap="viridis", alpha=0.6, s=1
+            x_data, y_data, c=int_subset, cmap="viridis", alpha=0.6, s=1
         )
 
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
-        ax.set_title(f"Q-space projection: {xlabel} vs {ylabel}")
+        ax.set_title(f"Q-space projection: {xlabel} vs {ylabel}{sampled_note}")
 
         plt.colorbar(scatter, ax=ax, label="Intensity")
 
@@ -378,7 +402,10 @@ def plot_q_projections(
 
 
 def plot_radial_q(
-    q_vectors: np.ndarray, intensities: np.ndarray, output_path: Path
+    q_vectors: np.ndarray,
+    intensities: np.ndarray,
+    output_path: Path,
+    max_points: Optional[int] = DEFAULT_MAX_SCATTER_POINTS,
 ) -> None:
     """
     Plot intensity vs radial Q.
@@ -387,18 +414,30 @@ def plot_radial_q(
         q_vectors: Array of shape (N, 3) with qx, qy, qz
         intensities: Array of shape (N,) with intensity values
         output_path: Output file path
+        max_points: Maximum number of points to plot for performance
     """
-    q_radial = np.sqrt(np.sum(q_vectors**2, axis=1))
+    # Apply subsampling if necessary
+    if max_points and len(q_vectors) > max_points:
+        indices = np.random.choice(len(q_vectors), max_points, replace=False)
+        q_subset = q_vectors[indices]
+        int_subset = intensities[indices]
+        sampled_note = f" (sampled {max_points} of {len(q_vectors)} points)"
+    else:
+        q_subset = q_vectors
+        int_subset = intensities
+        sampled_note = ""
+
+    q_radial = np.sqrt(np.sum(q_subset**2, axis=1))
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
     scatter = ax.scatter(
-        q_radial, intensities, c=intensities, cmap="viridis", alpha=0.6, s=1
+        q_radial, int_subset, c=int_subset, cmap="viridis", alpha=0.6, s=1
     )
 
     ax.set_xlabel("Q (Å⁻¹)")
     ax.set_ylabel("Intensity")
-    ax.set_title("Intensity vs Radial Q")
+    ax.set_title(f"Intensity vs Radial Q{sampled_note}")
 
     plt.colorbar(scatter, ax=ax, label="Intensity")
 
@@ -445,6 +484,7 @@ def plot_intensity_heatmap(
     panel_shape: Tuple[int, int],
     title: str,
     output_path: Path,
+    max_points: Optional[int] = 500000,
 ) -> None:
     """
     Plot intensity heatmap for a detector panel.
@@ -456,13 +496,29 @@ def plot_intensity_heatmap(
         panel_shape: (height, width) of detector panel
         title: Plot title
         output_path: Output file path
+        max_points: Maximum number of points to use for heatmap
     """
+    # Apply subsampling if necessary
+    if max_points and len(pixel_coords_for_panel) > max_points:
+        indices = np.random.choice(
+            len(pixel_coords_for_panel), max_points, replace=False
+        )
+        coords_subset = [pixel_coords_for_panel[i] for i in indices]
+        intensities_subset = intensities_for_panel[indices]
+        sampled_note = (
+            f" (sampled {max_points} of {len(pixel_coords_for_panel)} points)"
+        )
+        title = title + sampled_note
+    else:
+        coords_subset = pixel_coords_for_panel
+        intensities_subset = intensities_for_panel
+
     # Create 2D array for heatmap
     height, width = panel_shape
     heatmap = np.full((height, width), np.nan)
 
     # Populate heatmap with intensity values
-    for (fast, slow), intensity in zip(pixel_coords_for_panel, intensities_for_panel):
+    for (fast, slow), intensity in zip(coords_subset, intensities_subset):
         if 0 <= slow < height and 0 <= fast < width:
             heatmap[int(slow), int(fast)] = intensity
 
@@ -479,7 +535,10 @@ def plot_intensity_heatmap(
 
 
 def plot_sigma_vs_intensity(
-    intensities: np.ndarray, sigmas: np.ndarray, output_path: Path
+    intensities: np.ndarray,
+    sigmas: np.ndarray,
+    output_path: Path,
+    max_points: Optional[int] = DEFAULT_MAX_SCATTER_POINTS,
 ) -> None:
     """
     Plot sigma vs intensity scatter plot.
@@ -488,18 +547,30 @@ def plot_sigma_vs_intensity(
         intensities: Array of intensity values
         sigmas: Array of sigma (error) values
         output_path: Output file path
+        max_points: Maximum number of points to plot for performance
     """
+    # Apply subsampling if necessary
+    if max_points and len(intensities) > max_points:
+        indices = np.random.choice(len(intensities), max_points, replace=False)
+        int_subset = intensities[indices]
+        sig_subset = sigmas[indices]
+        sampled_note = f" (sampled {max_points} of {len(intensities)} points)"
+    else:
+        int_subset = intensities
+        sig_subset = sigmas
+        sampled_note = ""
+
     fig, ax = plt.subplots(figsize=(10, 6))
 
-    scatter = ax.scatter(intensities, sigmas, alpha=0.6, s=1, c="blue")
+    ax.scatter(int_subset, sig_subset, alpha=0.6, s=1, c="blue")
 
     ax.set_xlabel("Intensity")
     ax.set_ylabel("Sigma")
-    ax.set_title("Sigma vs Intensity")
+    ax.set_title(f"Sigma vs Intensity{sampled_note}")
 
     # Add ideal sigma relationship line (if reasonable)
-    if len(intensities) > 0:
-        max_intensity = np.max(intensities)
+    if len(int_subset) > 0:
+        max_intensity = np.max(int_subset)
         x_ideal = np.linspace(0, max_intensity, 100)
         y_ideal = np.sqrt(x_ideal)  # Poisson noise relationship
         ax.plot(x_ideal, y_ideal, "r--", alpha=0.5, label="Poisson √I")
@@ -630,20 +701,18 @@ def main():
         npz_data = load_npz_data(args.npz_file)
         imageset = load_cbf_image(args.raw_image)
         experiment = load_experiment(args.expt)
-        total_mask = load_mask_pickle(args.total_mask)
+        # Load mask files (currently only validating they exist)
+        load_mask_pickle(args.total_mask)
 
-        # Load optional data
-        bragg_mask = None
+        # Load optional data (for validation)
         if args.bragg_mask:
-            bragg_mask = load_mask_pickle(args.bragg_mask)
+            load_mask_pickle(args.bragg_mask)
 
-        pixel_mask = None
         if args.pixel_mask:
-            pixel_mask = load_mask_pickle(args.pixel_mask)
+            load_mask_pickle(args.pixel_mask)
 
-        bg_map = None
         if args.bg_map:
-            bg_map = load_background_map(args.bg_map)
+            load_background_map(args.bg_map)
 
         # Generate diagnostic plots
         logger.info("Generating diagnostic plots...")
@@ -712,11 +781,22 @@ def main():
                     zip(fast_coords[panel_0_mask], slow_coords[panel_0_mask])
                 )
 
+                # Apply subsampling for pixel overlay if necessary
+                if len(panel_0_coords) > args.max_plot_points:
+                    sample_indices = np.random.choice(
+                        len(panel_0_coords), args.max_plot_points, replace=False
+                    )
+                    panel_0_coords_sampled = [panel_0_coords[i] for i in sample_indices]
+                    overlay_title = f"Raw Image with Extracted Diffuse Pixels (Panel 0) - sampled {args.max_plot_points} of {len(panel_0_coords)} points"
+                else:
+                    panel_0_coords_sampled = panel_0_coords
+                    overlay_title = "Raw Image with Extracted Diffuse Pixels (Panel 0)"
+
                 plot_diffuse_pixel_overlay(
                     raw_image_data,
                     panel_id=0,
-                    pixel_coords_for_panel=panel_0_coords,
-                    title="Raw Image with Extracted Diffuse Pixels (Panel 0)",
+                    pixel_coords_for_panel=panel_0_coords_sampled,
+                    title=overlay_title,
                     output_path=str(output_dir / "diffuse_pixel_overlay.png"),
                 )
         else:
@@ -730,8 +810,13 @@ def main():
 
         # Plot 3 & 4: Q-space coverage
         logger.info("Generating Q-space coverage plots...")
-        plot_q_projections(q_vectors, intensities, output_dir)
-        plot_radial_q(q_vectors, intensities, output_dir / "radial_q_distribution.png")
+        plot_q_projections(q_vectors, intensities, output_dir, args.max_plot_points)
+        plot_radial_q(
+            q_vectors,
+            intensities,
+            output_dir / "radial_q_distribution.png",
+            args.max_plot_points,
+        )
 
         # Plot 5: Intensity distribution
         logger.info("Generating intensity distribution histogram...")
@@ -756,6 +841,7 @@ def main():
                     panel_shape=panel_shape,
                     title="Intensity Heatmap (Panel 0)",
                     output_path=output_dir / "intensity_heatmap_panel_0.png",
+                    max_points=args.max_plot_points,
                 )
         else:
             logger.info("Skipping intensity heatmap plot (no pixel coordinates)")
@@ -763,7 +849,10 @@ def main():
         # Plot 7 & 8: Sigma analysis
         logger.info("Generating sigma analysis plots...")
         plot_sigma_vs_intensity(
-            intensities, sigmas, output_dir / "sigma_vs_intensity.png"
+            intensities,
+            sigmas,
+            output_dir / "sigma_vs_intensity.png",
+            args.max_plot_points,
         )
         plot_isigi_histogram(intensities, sigmas, output_dir / "isigi_histogram.png")
 
@@ -773,13 +862,13 @@ def main():
         with open(summary_path, "w") as f:
             f.write("Diffuse Extraction Visual Diagnostics Summary\n")
             f.write("=" * 50 + "\n\n")
-            f.write(f"Input files:\n")
+            f.write("Input files:\n")
             f.write(f"  Raw image: {args.raw_image}\n")
             f.write(f"  Experiment: {args.expt}\n")
             f.write(f"  Total mask: {args.total_mask}\n")
             f.write(f"  NPZ file: {args.npz_file}\n\n")
 
-            f.write(f"Data summary:\n")
+            f.write("Data summary:\n")
             f.write(f"  Total diffuse points: {len(intensities)}\n")
             f.write(
                 f"  Q-vector range: [{q_vectors.min():.4f}, {q_vectors.max():.4f}] Å⁻¹\n"

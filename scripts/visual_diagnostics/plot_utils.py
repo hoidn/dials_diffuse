@@ -191,6 +191,7 @@ def plot_spot_overlay(
     log_scale: bool = False,
     predicted_positions: Optional[List[Tuple[float, float]]] = None,
     predicted_color: str = "blue",
+    max_points: Optional[int] = None,
 ) -> plt.Figure:
     """
     Plot detector image with spot position overlays.
@@ -206,6 +207,7 @@ def plot_spot_overlay(
         log_scale: Whether to use logarithmic color scale
         predicted_positions: Optional list of predicted spot positions
         predicted_color: Color for predicted spot markers
+        max_points: Maximum number of points to plot for performance
 
     Returns:
         matplotlib Figure object
@@ -232,9 +234,29 @@ def plot_spot_overlay(
 
     im = ax.imshow(img_array, cmap="gray", norm=norm, origin="lower", aspect="equal")
 
+    # Apply subsampling to spot positions if necessary
+    sampled_spots = spot_positions
+    sampled_predicted = predicted_positions
+    sampled_note = ""
+
+    if max_points and spot_positions and len(spot_positions) > max_points:
+        indices = np.random.choice(len(spot_positions), max_points, replace=False)
+        sampled_spots = [spot_positions[i] for i in indices]
+        sampled_note = f" (sampled {max_points} of {len(spot_positions)} spots)"
+
+    if max_points and predicted_positions and len(predicted_positions) > max_points:
+        pred_indices = np.random.choice(
+            len(predicted_positions), max_points, replace=False
+        )
+        sampled_predicted = [predicted_positions[i] for i in pred_indices]
+        if not sampled_note:  # Only add note if not already added for observed spots
+            sampled_note = (
+                f" (sampled {max_points} of {len(predicted_positions)} predicted spots)"
+            )
+
     # Plot observed spots
-    if spot_positions:
-        x_coords, y_coords = zip(*spot_positions)
+    if sampled_spots:
+        x_coords, y_coords = zip(*sampled_spots)
         ax.scatter(
             x_coords,
             y_coords,
@@ -248,8 +270,8 @@ def plot_spot_overlay(
         )
 
     # Plot predicted spots if provided
-    if predicted_positions:
-        pred_x, pred_y = zip(*predicted_positions)
+    if sampled_predicted:
+        pred_x, pred_y = zip(*sampled_predicted)
         ax.scatter(
             pred_x,
             pred_y,
@@ -269,7 +291,7 @@ def plot_spot_overlay(
         ax.legend()
 
     # Set title and labels
-    ax.set_title(title)
+    ax.set_title(title + sampled_note)
     ax.set_xlabel("Fast axis (pixels)")
     ax.set_ylabel("Slow axis (pixels)")
 
