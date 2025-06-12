@@ -29,6 +29,7 @@ from typing import Dict, List, Optional, Tuple, Union, Any
 import matplotlib
 
 matplotlib.use("Agg")  # Set early for non-interactive backend
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -350,7 +351,8 @@ def plot_q_projections(
     q_vectors: np.ndarray,
     intensities: np.ndarray,
     output_dir: Path,
-    max_points: Optional[int] = DEFAULT_MAX_SCATTER_POINTS,
+    title_suffix: str = "",
+    norm: Optional[mcolors.LogNorm] = None,
 ) -> None:
     """
     Generate Q-space projection plots.
@@ -359,20 +361,10 @@ def plot_q_projections(
         q_vectors: Array of shape (N, 3) with qx, qy, qz
         intensities: Array of shape (N,) with intensity values
         output_dir: Output directory for plots
-        max_points: Maximum number of points to plot for performance
+        title_suffix: Additional text to append to plot titles
+        norm: Color normalization for scatter plots (e.g., LogNorm for log scale)
     """
-    # Apply subsampling if necessary
-    if max_points and len(q_vectors) > max_points:
-        indices = np.random.choice(len(q_vectors), max_points, replace=False)
-        q_subset = q_vectors[indices]
-        int_subset = intensities[indices]
-        sampled_note = f" (sampled {max_points} of {len(q_vectors)} points)"
-    else:
-        q_subset = q_vectors
-        int_subset = intensities
-        sampled_note = ""
-
-    qx, qy, qz = q_subset[:, 0], q_subset[:, 1], q_subset[:, 2]
+    qx, qy, qz = q_vectors[:, 0], q_vectors[:, 1], q_vectors[:, 2]
 
     # Create three projection plots
     projections = [
@@ -385,14 +377,19 @@ def plot_q_projections(
         fig, ax = plt.subplots(figsize=(8, 6))
 
         scatter = ax.scatter(
-            x_data, y_data, c=int_subset, cmap="viridis", alpha=0.6, s=1
+            x_data, y_data, c=intensities, cmap="viridis", alpha=0.6, s=1, norm=norm
         )
 
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
-        ax.set_title(f"Q-space projection: {xlabel} vs {ylabel}{sampled_note}")
+        ax.set_title(f"Q-space projection: {xlabel} vs {ylabel}{title_suffix}")
 
-        plt.colorbar(scatter, ax=ax, label="Intensity")
+        colorbar_label = (
+            "Intensity (log scale)"
+            if isinstance(norm, mcolors.LogNorm)
+            else "Intensity"
+        )
+        plt.colorbar(scatter, ax=ax, label=colorbar_label)
 
         output_path = output_dir / f"q_projection_{filename}.png"
         fig.savefig(output_path, dpi=150, bbox_inches="tight")
@@ -405,7 +402,8 @@ def plot_radial_q(
     q_vectors: np.ndarray,
     intensities: np.ndarray,
     output_path: Path,
-    max_points: Optional[int] = DEFAULT_MAX_SCATTER_POINTS,
+    title_suffix: str = "",
+    norm: Optional[mcolors.LogNorm] = None,
 ) -> None:
     """
     Plot intensity vs radial Q.
@@ -414,32 +412,25 @@ def plot_radial_q(
         q_vectors: Array of shape (N, 3) with qx, qy, qz
         intensities: Array of shape (N,) with intensity values
         output_path: Output file path
-        max_points: Maximum number of points to plot for performance
+        title_suffix: Additional text to append to plot title
+        norm: Color normalization for scatter plot (e.g., LogNorm for log scale)
     """
-    # Apply subsampling if necessary
-    if max_points and len(q_vectors) > max_points:
-        indices = np.random.choice(len(q_vectors), max_points, replace=False)
-        q_subset = q_vectors[indices]
-        int_subset = intensities[indices]
-        sampled_note = f" (sampled {max_points} of {len(q_vectors)} points)"
-    else:
-        q_subset = q_vectors
-        int_subset = intensities
-        sampled_note = ""
-
-    q_radial = np.sqrt(np.sum(q_subset**2, axis=1))
+    q_radial = np.sqrt(np.sum(q_vectors**2, axis=1))
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
     scatter = ax.scatter(
-        q_radial, int_subset, c=int_subset, cmap="viridis", alpha=0.6, s=1
+        q_radial, intensities, c=intensities, cmap="viridis", alpha=0.6, s=1, norm=norm
     )
 
     ax.set_xlabel("Q (Å⁻¹)")
     ax.set_ylabel("Intensity")
-    ax.set_title(f"Intensity vs Radial Q{sampled_note}")
+    ax.set_title(f"Intensity vs Radial Q{title_suffix}")
 
-    plt.colorbar(scatter, ax=ax, label="Intensity")
+    colorbar_label = (
+        "Intensity (log scale)" if isinstance(norm, mcolors.LogNorm) else "Intensity"
+    )
+    plt.colorbar(scatter, ax=ax, label=colorbar_label)
 
     fig.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -538,7 +529,7 @@ def plot_sigma_vs_intensity(
     intensities: np.ndarray,
     sigmas: np.ndarray,
     output_path: Path,
-    max_points: Optional[int] = DEFAULT_MAX_SCATTER_POINTS,
+    title_suffix: str = "",
 ) -> None:
     """
     Plot sigma vs intensity scatter plot.
@@ -547,30 +538,19 @@ def plot_sigma_vs_intensity(
         intensities: Array of intensity values
         sigmas: Array of sigma (error) values
         output_path: Output file path
-        max_points: Maximum number of points to plot for performance
+        title_suffix: Additional text to append to plot title
     """
-    # Apply subsampling if necessary
-    if max_points and len(intensities) > max_points:
-        indices = np.random.choice(len(intensities), max_points, replace=False)
-        int_subset = intensities[indices]
-        sig_subset = sigmas[indices]
-        sampled_note = f" (sampled {max_points} of {len(intensities)} points)"
-    else:
-        int_subset = intensities
-        sig_subset = sigmas
-        sampled_note = ""
-
     fig, ax = plt.subplots(figsize=(10, 6))
 
-    ax.scatter(int_subset, sig_subset, alpha=0.6, s=1, c="blue")
+    ax.scatter(intensities, sigmas, alpha=0.6, s=1, c="blue")
 
     ax.set_xlabel("Intensity")
     ax.set_ylabel("Sigma")
-    ax.set_title(f"Sigma vs Intensity{sampled_note}")
+    ax.set_title(f"Sigma vs Intensity{title_suffix}")
 
     # Add ideal sigma relationship line (if reasonable)
-    if len(int_subset) > 0:
-        max_intensity = np.max(int_subset)
+    if len(intensities) > 0:
+        max_intensity = np.max(intensities)
         x_ideal = np.linspace(0, max_intensity, 100)
         y_ideal = np.sqrt(x_ideal)  # Poisson noise relationship
         ax.plot(x_ideal, y_ideal, "r--", alpha=0.5, label="Poisson √I")
@@ -722,6 +702,70 @@ def main():
         intensities = npz_data["intensities"]
         sigmas = npz_data["sigmas"]
 
+        # Centralized data subsampling for scatter plots
+        max_points_for_plot = args.max_plot_points
+        plot_title_suffix = ""
+        if len(intensities) > max_points_for_plot:
+            logger.info(
+                f"Subsampling data from {len(intensities)} to {max_points_for_plot} points for relevant scatter plots."
+            )
+            indices = np.random.choice(
+                len(intensities), max_points_for_plot, replace=False
+            )
+            q_vectors_sampled = q_vectors[indices]
+            intensities_sampled = intensities[indices]
+            sigmas_sampled = sigmas[indices]
+            plot_title_suffix = (
+                f" (sampled {max_points_for_plot} of {len(intensities)} points)"
+            )
+        else:
+            q_vectors_sampled = q_vectors
+            intensities_sampled = intensities
+            sigmas_sampled = sigmas
+
+        # Calculate common LogNorm for consistent intensity visualization
+        common_log_norm = None
+        if len(intensities_sampled) > 0:
+            positive_intensities_sampled = intensities_sampled[intensities_sampled > 0]
+            if len(positive_intensities_sampled) > 0:
+                plot_vmin_log = np.percentile(
+                    positive_intensities_sampled, 1
+                )  # 1st percentile
+                plot_vmin_log = max(plot_vmin_log, 1e-6)  # Ensure positive
+                plot_vmax_log = np.percentile(
+                    intensities_sampled, 99.9
+                )  # 99.9th percentile
+                if (
+                    plot_vmax_log <= plot_vmin_log
+                ):  # Handle edge case if percentiles are too close or inverted
+                    plot_vmax_log = plot_vmin_log * 10 if plot_vmin_log > 0 else 1.0
+                    # Fallback if all positive intensities are the same, use actual max of sampled positive data
+                    if len(np.unique(positive_intensities_sampled)) == 1:
+                        plot_vmax_log = positive_intensities_sampled[0] * 1.1
+                    elif np.any(intensities_sampled > 0):
+                        plot_vmax_log = max(
+                            plot_vmax_log,
+                            np.max(intensities_sampled[intensities_sampled > 0]),
+                        )
+                common_log_norm = mcolors.LogNorm(
+                    vmin=plot_vmin_log, vmax=plot_vmax_log
+                )
+                logger.info(
+                    f"Using logarithmic color scale with vmin={plot_vmin_log:.2e}, vmax={plot_vmax_log:.2e}"
+                )
+            else:  # No positive intensities in sample
+                common_log_norm = mcolors.LogNorm(
+                    vmin=1e-6, vmax=1.0
+                )  # Default fallback norm
+                logger.warning(
+                    "No positive intensities found in sample, using fallback logarithmic norm"
+                )
+        else:  # No points in sample
+            common_log_norm = mcolors.LogNorm(
+                vmin=1e-6, vmax=1.0
+            )  # Default fallback norm
+            logger.warning("No points in sample, using fallback logarithmic norm")
+
         # Check if pixel coordinates are available
         has_pixel_coords = all(
             key in npz_data
@@ -810,12 +854,19 @@ def main():
 
         # Plot 3 & 4: Q-space coverage
         logger.info("Generating Q-space coverage plots...")
-        plot_q_projections(q_vectors, intensities, output_dir, args.max_plot_points)
+        plot_q_projections(
+            q_vectors_sampled,
+            intensities_sampled,
+            output_dir,
+            title_suffix=plot_title_suffix,
+            norm=common_log_norm,
+        )
         plot_radial_q(
-            q_vectors,
-            intensities,
+            q_vectors_sampled,
+            intensities_sampled,
             output_dir / "radial_q_distribution.png",
-            args.max_plot_points,
+            title_suffix=plot_title_suffix,
+            norm=common_log_norm,
         )
 
         # Plot 5: Intensity distribution
@@ -849,10 +900,10 @@ def main():
         # Plot 7 & 8: Sigma analysis
         logger.info("Generating sigma analysis plots...")
         plot_sigma_vs_intensity(
-            intensities,
-            sigmas,
+            intensities_sampled,
+            sigmas_sampled,
             output_dir / "sigma_vs_intensity.png",
-            args.max_plot_points,
+            title_suffix=plot_title_suffix,
         )
         plot_isigi_histogram(intensities, sigmas, output_dir / "isigi_histogram.png")
 

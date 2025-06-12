@@ -48,7 +48,7 @@ module src.diffusepipe.crystallography {
         // - On failure, includes appropriate error codes and diagnostic information.
         // Behavior:
         // - **Step 1:** Calls `_determine_processing_route` to select appropriate DIALS adapter (Module 1.S.0).
-        // - **Step 2:** Calls selected adapter's `process_still` method to perform DIALS processing.
+        // - **Step 2:** Calls selected adapter's processing method to perform DIALS processing (either `process_still` for stills or `process_sequence` for sequences).
         // - **Step 3:** If DIALS processing succeeds, calls `ModelValidator.validate_geometry` with all validation checks.
         // - **Step 4:** Packages results into OperationOutcome with comprehensive output_artifacts:
         //   - `experiment`: DIALS Experiment object
@@ -82,7 +82,7 @@ module src.diffusepipe.crystallography {
         // Behavior:
         // - **Legacy API:** Provides backward compatibility for callers that only need DIALS processing.
         // - Calls `_determine_processing_route` to select appropriate adapter.
-        // - Calls selected adapter's `process_still` method.
+        // - Calls selected adapter's processing method (either `process_still` for stills or `process_sequence` for sequences).
         // - Returns OperationOutcome with DIALS results but without validation metrics.
         // - Maintains same routing logic and error handling as the full method.
         src.diffusepipe.types.OperationOutcome process_still(

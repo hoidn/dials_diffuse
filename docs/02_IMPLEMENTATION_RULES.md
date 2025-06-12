@@ -79,6 +79,81 @@ This document outlines the standard conventions, patterns, and rules for impleme
         # result_array = array_a * array_b + 5
         ```
     *   **Consideration:** While vectorization is generally preferred for performance, ensure that its use does not unduly obfuscate the logic for very complex, non-standard operations. Balance performance with clarity. DIALS `flex` arrays also offer vectorized operations and should be used when interacting directly with DIALS data structures.
+
+**5.1 Performance Optimization Strategies**
+
+**Vectorization Success Patterns:**
+*   **Vectorize by Default:** When in doubt, prefer vectorized implementations. Only use iterative approaches during initial prototyping or for very complex non-standard operations.
+*   **Batch Processing:** Process coordinates, q-vectors, and corrections as arrays rather than individual elements. Group operations that can be parallelized.
+*   **Memory Efficiency:** Minimize Python loop overhead through vectorized NumPy operations. Use array-based data structures over lists of individual objects.
+*   **Algorithmic Validation:** Test vectorized implementations against known reference results or simplified test cases to ensure correctness.
+
+**Performance Measurement Framework:**
+*   **Structured Testing:** Document speedups with before/after timing measurements using consistent test conditions.
+*   **Realistic Data Sizes:** Test with actual detector geometries and data volumes representative of production use.
+*   **Performance Characterization:** Document specific improvements with quantified metrics (e.g., "2.4x speedup: 4.0s → 1.7s").
+*   **Scalability Validation:** Ensure optimizations work across different data scales and don't degrade with larger inputs.
+
+**Example Vectorization Pattern:**
+```python
+# Before: Python loop (slower)
+result = []
+for x, y in zip(list_a, list_b):
+    result.append(complex_calculation(x, y))
+
+# After: Vectorized operation (faster)
+array_a = np.array(list_a)
+array_b = np.array(list_b)
+result_array = vectorized_complex_calculation(array_a, array_b)
+
+# Verification: Prove equivalence (critical)
+assert np.allclose(result, result_array, rtol=1e-15)
+```
+
+**Optimization Implementation Guidelines:**
+*   **Profile First:** Identify actual bottlenecks through profiling before optimizing
+*   **Vectorize First:** Implement vectorized solutions directly rather than iterative approaches
+*   **Validate Results:** Ensure vectorized code produces correct results using reference data or simplified test cases
+*   **Document Benefits:** Record specific performance improvements achieved
+*   **Test Edge Cases:** Verify optimizations work correctly with boundary conditions
+
+**5.2 Scientific Accuracy Implementation Guidelines**
+
+**NIST Data Integration Standards:**
+*   **Reference Data Sources:** Use tabulated NIST X-ray mass attenuation coefficients over rough approximations for critical calculations.
+*   **Proper Atmospheric Composition:** Standard dry air by mass (N: 78.084%, O: 20.946%, Ar: 0.934%, C: 0.036%) with correct molar masses.
+*   **Thermodynamic Accuracy:** Implement ideal gas law with configurable temperature and pressure parameters for environmental calculations.
+*   **Energy Range Coverage:** Support wide energy ranges (e.g., 1-100 keV) with appropriate interpolation methods for accuracy.
+
+**Validation Requirements:**
+*   **Reference Value Testing:** Validate calculated values against NIST reference data within 1% tolerance where possible.
+*   **Cross-Validation:** Compare against known theoretical values from authoritative scientific literature.
+*   **Unit Conversion Precision:** Ensure proper dimensional consistency throughout calculations (e.g., mm to m conversions).
+*   **Configurable Parameters:** Support variable environmental conditions (temperature, pressure, humidity) rather than hard-coded values.
+
+**Scientific Enhancement Process:**
+1. **Identify Approximations:** Locate rough approximations or "magic numbers" in existing code that could benefit from scientific accuracy.
+2. **Research Authoritative Sources:** Find official data from NIST, IUCR, or other recognized scientific institutions.
+3. **Implement Accurate Calculations:** Replace approximations with scientifically validated formulas and tabulated data.
+4. **Create Validation Tests:** Develop comprehensive tests against reference data with appropriate tolerances.
+5. **Document Scientific Basis:** Include references to data sources, formulas used, and any assumptions made.
+
+**Example: Air Attenuation Correction Enhancement:**
+```python
+# Before: Rough approximation
+air_correction = wavelength**3 * 0.001  # Magic number
+
+# After: NIST-based calculation
+def calculate_air_attenuation(wavelength_angstrom, path_length_mm, 
+                            temperature_k=293.15, pressure_atm=1.0):
+    """Calculate air attenuation using NIST mass attenuation data"""
+    energy_kev = 12.398 / wavelength_angstrom
+    mu_air = get_nist_mass_attenuation_coefficient(energy_kev)
+    air_density = calculate_air_density(temperature_k, pressure_atm)
+    path_length_m = path_length_mm / 1000.0
+    return np.exp(-mu_air * air_density * path_length_m)
+```
+
 *   **Naming:** Follow language-standard naming conventions (e.g., snake_case for Python variables/functions, CamelCase for Python classes). Use descriptive names.
 
 **5. Data Handling: Parse, Don't Validate (Leveraging Models like Pydantic)**
@@ -177,6 +252,91 @@ This document outlines the standard conventions, patterns, and rules for impleme
 *   **Debugging Mock Failures & Test Failures:** Systematically inspect mock attributes, call logs, and actual vs. expected values when tests fail.
 *   **Test Setup for Error Conditions:** Ensure tests for error handling satisfy preconditions up to the point where the error is expected.
 *   **Testing Configurable Behavior and Constants:** Write assertions that test behavioral outcomes rather than being rigidly tied to exact constant values. Review tests when constants change.
+
+**7.1 C++ Backend Object Compatibility Testing**
+
+When testing components that interact with DIALS or other libraries with C++ backends, special considerations apply:
+
+**DIALS C++ Integration Requirements:**
+*   **Real Class Mocking:** Create actual Python classes that mimic C++ object interfaces instead of using MagicMock for constructors that will be passed to C++ code.
+*   **Type Compatibility:** Ensure mock objects work with `isinstance()` checks and C++ type conversion requirements that occur during library calls.
+*   **Constructor vs Method Patching:** Distinguish between patching methods (use `patch.object`) and classes (use proper mock classes with required magic methods).
+*   **Magic Method Implementation:** Add proper `__len__`, `__getitem__`, `__iter__`, and other magic methods to mock classes as required by the actual usage patterns.
+
+**Example C++ Compatible Mock Class:**
+```python
+class MockExperimentList:
+    """Mock class compatible with DIALS C++ ExperimentList constructor"""
+    def __init__(self, experiments=None):
+        self.experiments = experiments or []
+    
+    def __len__(self):
+        return len(self.experiments)
+    
+    def __getitem__(self, index):
+        return self.experiments[index]
+    
+    def __iter__(self):
+        return iter(self.experiments)
+    
+    # Required for isinstance() compatibility with C++ backends
+```
+
+**Common C++ Integration Errors to Avoid:**
+*   `ExperimentList([MagicMock])` fails due to C++ backend requiring real Experiment objects
+*   Mock objects lacking proper structure to work with `isinstance()` checks
+*   Incomplete mock setup for vectorized operations in `dials.array_family.flex` modules
+*   Wrong patch targets (patching module-level imports instead of actual method calls)
+
+**Proven Fix Patterns:**
+*   Use `patch.object(adapter, '_method_name')` for internal method mocking rather than module-level patching
+*   Create comprehensive `flex` module mocks with proper `bool`, `grid`, and `int` mock setup
+*   Test import error scenarios using `builtins.__import__` patching with proper `sys.modules` cleanup
+*   Enhance reflections mocks with proper `__contains__` and `__getitem__` setup for real implementation compatibility
+
+**7.2 Test Suite Remediation Methodology**
+
+When facing systematic test failures, use this proven remediation strategy:
+
+**Systematic Failure Analysis:**
+*   **Failure Categorization:** Group test failures by root cause (API changes, mock strategy issues, assertion problems, import errors).
+*   **Mock Evolution Priority:** Transition systematically: Mock → MagicMock → Real Components as appropriate for each test case.
+*   **Realistic Bounds:** Update assertions to match actual system behavior and detector physics (e.g., solid angle corrections < 3e6, not arbitrary small values).
+*   **Error Handling Enhancement:** Improve bounds checking and edge case handling throughout test implementations.
+
+**Proven Remediation Process:**
+1. **Categorize Failures:** Group similar failures by failure type (import errors, mock issues, assertion problems, API incompatibilities).
+2. **Fix by Category:** Apply targeted fixes to each category rather than attempting wholesale changes.
+3. **Real Component Integration:** Replace complex mocking with actual components where feasible for more authentic testing.
+4. **Iterative Validation:** Test each fix independently before proceeding to ensure no regressions are introduced.
+5. **Regression Prevention:** Ensure fixes don't break existing passing tests - run full test suite after each category fix.
+
+**Test Authenticity Guidelines:**
+*   **Real Components Over Mocks:** Use actual DIALS `flex` arrays and objects instead of complex mock hierarchies where possible.
+*   **API Compatibility:** Fix DIALS import issues and method signatures systematically when library versions change.
+*   **Magic Method Support:** Use `MagicMock` for objects requiring `__getitem__`, `__and__`, `__or__`, `__iter__` operations.
+*   **Bounds Validation:** Use realistic tolerances based on actual detector geometries and physical correction factors.
+
+**Example Successful Remediation Pattern:**
+```python
+# Before: Complex mock failing with AttributeError
+mock_detector = Mock()
+mock_detector.__getitem__ = Mock(side_effect=AttributeError)
+
+# After: MagicMock with proper magic method support
+mock_detector = MagicMock()
+mock_detector.__getitem__.return_value = mock_panel
+mock_detector.__iter__.return_value = iter([mock_panel])
+
+# Best: Real component when feasible
+real_detector_data = flex.bool(flex.grid(height, width), True)
+```
+
+**Success Metrics:**
+*   **Quantified Improvement:** Track test pass rates (e.g., "64% reduction in failures: 22 → 8")
+*   **Stability Validation:** Ensure remediated tests pass consistently across multiple runs
+*   **Regression Monitoring:** Verify that fixes don't introduce new failure modes
+*   **Integration Success:** Confirm that fixed tests validate actual component behavior, not just mock interactions
 
 **8. Error Handling**
 

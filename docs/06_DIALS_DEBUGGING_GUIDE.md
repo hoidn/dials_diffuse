@@ -225,6 +225,72 @@ def simple_position_validation(reflections, tolerance=2.0):
 ```
 This pixel-based check avoids complex coordinate transformations and can help isolate whether the geometric model itself is poor or if the Q-vector calculations are problematic. However, strive to make the Q-vector validation the primary pass/fail criterion.
 
+## Configuration Object vs Dictionary Issues
+
+### Common Error Pattern
+
+**Symptom:**
+```
+AttributeError: 'dict' object has no attribute 'spotfinder_threshold_algorithm'
+```
+
+**Root Cause:** Code expects structured configuration objects but receives raw dictionaries.
+
+### Debugging Strategy
+
+**1. Configuration Object Validation:**
+```python
+def debug_configuration_object(config, expected_type):
+    """Comprehensive configuration debugging"""
+    logger.info(f"Config actual type: {type(config)}")
+    logger.info(f"Config expected type: {expected_type}")
+    logger.info(f"Config contents: {config}")
+    
+    if isinstance(config, dict):
+        logger.error("Configuration is raw dict, should be structured object")
+        logger.info(f"Available dict keys: {list(config.keys())}")
+        return False
+    elif hasattr(config, '__dict__'):
+        logger.info(f"Object attributes: {list(config.__dict__.keys())}")
+        
+    # Check for common field name mismatches
+    if hasattr(config, 'spotfinder_threshold_algorithm'):
+        logger.info("✓ spotfinder_threshold_algorithm field found")
+        return True
+    else:
+        logger.error("✗ spotfinder_threshold_algorithm field missing")
+        return False
+```
+
+**2. Common Resolution Patterns:**
+```python
+# WRONG - passing raw dict
+config = {"spotfinder_threshold_algorithm": "dispersion"}
+
+# CORRECT - using proper configuration class
+from diffusepipe.types.types_IDL import DIALSSequenceProcessConfig
+config = DIALSSequenceProcessConfig(
+    spotfinder_threshold_algorithm="dispersion"
+)
+```
+
+### Systematic Resolution Process
+
+**1. Data Type Detection Issues:**
+- Verify Module 1.S.0 correctly identifies stills vs sequences
+- Check `Angle_increment` parsing logic
+- Validate routing logic for adapter selection
+
+**2. Configuration Class Verification:**
+- Ensure proper configuration object instantiation
+- Check field names match configuration class definitions
+- Verify type conversion for all fields
+
+**3. Adapter Selection Validation:**
+- Confirm correct adapter chosen based on data type
+- Validate adapter receives expected configuration type
+- Check adapter internal configuration handling
+
 ## Debugging Workflow
 
 ### Step-by-Step Approach
