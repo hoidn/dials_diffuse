@@ -357,6 +357,7 @@ class StillProcessorAndValidatorComponent:
                 image_path=image_path,
                 config=config,
                 base_expt_path=base_experiment_path,
+                output_dir_final=output_dir,
             )
         except Exception as exc:
             logger.error("DIALS processing raised: %s", exc)
@@ -406,6 +407,7 @@ class StillProcessorAndValidatorComponent:
         image_path: str,
         config: DIALSStillsProcessConfig,
         base_experiment_path: Optional[str] = None,
+        output_dir: Optional[str] = None,
     ) -> OperationOutcome:  # noqa: D401 – keep old name
         """Legacy API: just run DIALS without validation."""
         # Use routing logic even for legacy API
@@ -418,6 +420,7 @@ class StillProcessorAndValidatorComponent:
             image_path=image_path,
             config=config,
             base_expt_path=base_experiment_path,
+            output_dir_final=output_dir,
         )
         if success and exp is not None and refl is not None:
             return OperationOutcome(

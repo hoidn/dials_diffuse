@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import Optional, Tuple, Union, Any
+from typing import Optional, Tuple, Any
 
 from diffusepipe.exceptions import DIALSError, ConfigurationError, DataValidationError
 from diffusepipe.types.types_IDL import DIALSStillsProcessConfig
@@ -42,6 +42,7 @@ class DIALSStillsProcessAdapter:
         image_path: str,
         config: DIALSStillsProcessConfig,
         base_expt_path: Optional[str] = None,
+        output_dir_final: Optional[str] = None,
     ) -> Tuple[Optional[object], Optional[object], bool, str]:
         """
         Process a single still image using dials.stills_process.Processor.
@@ -50,6 +51,7 @@ class DIALSStillsProcessAdapter:
             image_path: Path to the CBF image file to process (must be true still)
             config: Configuration parameters for dials.stills_process
             base_expt_path: Optional path to base experiment file for geometry
+            output_dir_final: Optional path to save final output files with consistent naming
 
         Returns:
             Tuple containing:
@@ -72,7 +74,9 @@ class DIALSStillsProcessAdapter:
 
             # Generate PHIL parameters for true stills processing
             logger.info("Generating PHIL parameters for stills processing...")
-            self._extracted_params = self._generate_phil_parameters(config)
+            self._extracted_params = self._generate_phil_parameters(
+                config, output_dir_final
+            )
             log_messages.append(f"Generated PHIL parameters for {image_path}")
 
             # Import DIALS components
@@ -145,7 +149,9 @@ class DIALSStillsProcessAdapter:
             else:
                 raise DIALSError(error_msg) from e
 
-    def _generate_phil_parameters(self, config: DIALSStillsProcessConfig) -> Any:
+    def _generate_phil_parameters(
+        self, config: DIALSStillsProcessConfig, output_dir_final: Optional[str] = None
+    ) -> Any:
         """
         Generate PHIL parameters for true stills processing.
 
@@ -187,6 +193,12 @@ class DIALSStillsProcessAdapter:
             # Extract params object to apply direct overrides
             params = working_phil.extract()
 
+            # Set output directory and prefix for consistent naming
+            if output_dir_final:
+                logger.info(f"Setting output directory: {output_dir_final}")
+                params.output.output_dir = output_dir_final
+                params.output.prefix = "indexed_refined_detector"
+
             # Apply configuration overrides for stills processing
             if config.known_unit_cell:
                 logger.info(f"Adding known unit cell: {config.known_unit_cell}")
@@ -219,7 +231,9 @@ class DIALSStillsProcessAdapter:
             if config.calculate_partiality is not None:
                 # Note: estimate_partiality parameter removed from current DIALS stills_process PHIL
                 # Partiality calculation may be handled automatically or via different parameters
-                logger.info(f"Partiality calculation requested: {config.calculate_partiality} (parameter no longer available in DIALS PHIL)")
+                logger.info(
+                    f"Partiality calculation requested: {config.calculate_partiality} (parameter no longer available in DIALS PHIL)"
+                )
 
             # Store the extracted params
             self._extracted_params = params
@@ -281,9 +295,11 @@ class DIALSStillsProcessAdapter:
         try:
             # Check if this is a DIALS reflection table with has_key method
             if not hasattr(reflections, "has_key"):
-                logger.warning("Could not validate partiality column (possibly mock object or unexpected type)")
+                logger.warning(
+                    "Could not validate partiality column (possibly mock object or unexpected type)"
+                )
                 return
-            
+
             # Check for partiality column
             if not reflections.has_key("partiality"):
                 raise DataValidationError(

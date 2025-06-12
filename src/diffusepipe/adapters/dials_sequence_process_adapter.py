@@ -1,6 +1,7 @@
 """Adapter for DIALS sequential processing workflow (import→find_spots→index→integrate)."""
 
 import logging
+import shutil
 import tempfile
 import subprocess
 from pathlib import Path
@@ -72,7 +73,7 @@ class DIALSSequenceProcessAdapter:
                     base_phil_content = f.read()
                 parse(base_phil_content)  # Validate PHIL syntax
 
-                # Base PHIL file loaded successfully  
+                # Base PHIL file loaded successfully
                 logger.debug(f"Loaded base PHIL parameters for {step} from {base_file}")
 
             except Exception as e:
@@ -170,6 +171,7 @@ class DIALSSequenceProcessAdapter:
         image_path: str,
         config: DIALSStillsProcessConfig,
         base_expt_path: Optional[str] = None,
+        output_dir_final: Optional[str] = None,
     ) -> Tuple[Optional[object], Optional[object], bool, str]:
         """
         Process a still/sequence image using DIALS sequential workflow.
@@ -178,6 +180,7 @@ class DIALSSequenceProcessAdapter:
             image_path: Path to the CBF image file to process
             config: Configuration parameters for DIALS processing
             base_expt_path: Optional path to base experiment file for geometry (ignored)
+            output_dir_final: Optional path to save final output files with consistent naming
 
         Returns:
             Tuple containing:
@@ -203,8 +206,11 @@ class DIALSSequenceProcessAdapter:
                 temp_path = Path(temp_dir)
                 original_cwd = Path.cwd()
 
-                # Convert to absolute path before changing directories
+                # Convert to absolute paths before changing directories
                 abs_image_path = Path(image_path).resolve()
+                abs_output_dir_final = (
+                    Path(output_dir_final).resolve() if output_dir_final else None
+                )
 
                 try:
                     # Change to temp directory for processing
@@ -255,6 +261,12 @@ class DIALSSequenceProcessAdapter:
                     # Validate partiality column
                     self._validate_partiality(reflections)
                     log_messages.append("Validated partiality data")
+
+                    # Copy output files to final directory if specified
+                    if abs_output_dir_final:
+                        self._copy_outputs_to_final_directory(
+                            temp_path, str(abs_output_dir_final), log_messages
+                        )
 
                     return experiment, reflections, True, "\n".join(log_messages)
 
@@ -451,3 +463,47 @@ class DIALSSequenceProcessAdapter:
                 "Could not validate partiality column (possibly mock object)"
             )
             pass
+
+    def _copy_outputs_to_final_directory(
+        self, temp_path: Path, output_dir_final: str, log_messages: list
+    ) -> None:
+        """
+        Copy DIALS output files to final directory with consistent naming.
+
+        Args:
+            temp_path: Path to temporary directory containing DIALS outputs
+            output_dir_final: Final output directory path
+            log_messages: List to append log messages to
+        """
+        try:
+            # Ensure output directory exists (use absolute path)
+            output_dir = Path(output_dir_final).resolve()
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            # Define source and target paths (use absolute paths)
+            source_expt = temp_path.resolve() / "integrated.expt"
+            source_refl = temp_path.resolve() / "integrated.refl"
+            target_expt = output_dir / "indexed_refined_detector.expt"
+            target_refl = output_dir / "indexed_refined_detector.refl"
+
+            # Copy files with consistent naming
+            if source_expt.exists():
+                shutil.copy2(source_expt, target_expt)
+                logger.info(f"Copied {source_expt} -> {target_expt}")
+                log_messages.append(f"Saved experiment file: {target_expt}")
+            else:
+                logger.warning(f"Source experiment file not found: {source_expt}")
+
+            if source_refl.exists():
+                shutil.copy2(source_refl, target_refl)
+                logger.info(f"Copied {source_refl} -> {target_refl}")
+                log_messages.append(f"Saved reflection file: {target_refl}")
+            else:
+                logger.warning(f"Source reflection file not found: {source_refl}")
+
+        except Exception as e:
+            error_msg = (
+                f"Failed to copy outputs to final directory {output_dir_final}: {e}"
+            )
+            logger.error(error_msg)
+            log_messages.append(error_msg)
