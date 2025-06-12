@@ -201,6 +201,43 @@ def parse_json_config(json_str: Optional[str], config_name: str) -> Dict[str, An
         raise
 
 
+def extract_pdb_symmetry(pdb_path: str) -> tuple[Optional[str], Optional[str]]:
+    """
+    Extract unit cell and space group from PDB file.
+
+    Returns:
+        tuple[Optional[str], Optional[str]]: (unit_cell_string, space_group_string)
+    """
+    try:
+        from iotbx import pdb
+
+        pdb_input = pdb.input(file_name=pdb_path)
+        crystal_symmetry = pdb_input.crystal_symmetry()
+
+        if crystal_symmetry is None:
+            logger.warning(f"No crystal symmetry found in PDB file: {pdb_path}")
+            return None, None
+
+        unit_cell = crystal_symmetry.unit_cell()
+        space_group = crystal_symmetry.space_group()
+
+        # Format unit cell parameters as comma-separated string
+        uc_params = unit_cell.parameters()
+        unit_cell_string = f"{uc_params[0]:.3f},{uc_params[1]:.3f},{uc_params[2]:.3f},{uc_params[3]:.2f},{uc_params[4]:.2f},{uc_params[5]:.2f}"
+
+        # Get space group symbol
+        space_group_string = space_group.type().lookup_symbol()
+
+        logger.info(
+            f"Extracted from PDB: unit_cell={unit_cell_string}, space_group={space_group_string}"
+        )
+        return unit_cell_string, space_group_string
+
+    except Exception as e:
+        logger.warning(f"Failed to extract symmetry from PDB file {pdb_path}: {e}")
+        return None, None
+
+
 def run_phase1_dials_processing(
     args: argparse.Namespace, image_output_dir: Path
 ) -> tuple[Path, Path]:
@@ -212,12 +249,20 @@ def run_phase1_dials_processing(
     """
     logger.info("=== Phase 1: DIALS Processing and Validation ===")
 
+    # Extract known symmetry from PDB if provided
+    known_unit_cell = None
+    known_space_group = None
+    if args.pdb_path:
+        known_unit_cell, known_space_group = extract_pdb_symmetry(args.pdb_path)
+
     # 2.1: DIALS Processing & Validation
     logger.info("Initializing DIALS processor...")
     processor = StillProcessorAndValidatorComponent()
 
-    # Create DIALS configuration
-    dials_config = create_default_config()
+    # Create DIALS configuration with known symmetry
+    dials_config = create_default_config(
+        known_unit_cell=known_unit_cell, known_space_group=known_space_group
+    )
     if args.dials_phil_path:
         dials_config.stills_process_phil_path = args.dials_phil_path
     if args.use_bragg_mask_option_b:

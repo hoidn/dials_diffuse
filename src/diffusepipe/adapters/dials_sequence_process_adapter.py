@@ -148,6 +148,8 @@ class DIALSSequenceProcessAdapter:
                 parameters.append(
                     f"indexing.known_symmetry.unit_cell={config.known_unit_cell}"
                 )
+                # Fix unit cell during refinement to preserve PDB reference
+                parameters.append("refinement.parameterisation.crystal.fix=cell")
 
         elif step == "integrate":
             parameters.extend(
@@ -345,6 +347,8 @@ class DIALSSequenceProcessAdapter:
             runtime_overrides["indexing.known_symmetry.unit_cell"] = (
                 config.known_unit_cell
             )
+            # Fix unit cell during refinement to preserve PDB reference
+            runtime_overrides["refinement.parameterisation.crystal.fix"] = "cell"
 
         phil_params = self._load_and_merge_phil_parameters(
             "index", config, runtime_overrides

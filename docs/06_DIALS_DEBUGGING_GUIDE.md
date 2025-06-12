@@ -64,6 +64,76 @@ phil_overrides = [
 - Monitor spot finding results (should find ~100+ spots for good data)
 - Validate indexing success
 
+## Configuration Object Issues
+
+### Common Configuration Errors
+
+**Error Pattern:**
+```
+AttributeError: 'dict' object has no attribute 'spotfinder_threshold_algorithm'
+```
+
+**Root Cause:** Configuration object structure mismatch - code expects a structured object but receives a dictionary.
+
+**Debugging Steps:**
+1. **Verify Configuration Object Creation:**
+   ```python
+   # Check type of config object
+   print(f"Config type: {type(config)}")
+   print(f"Config contents: {config}")
+   
+   # Expected: <class 'diffusepipe.types.types_IDL.DIALSSequenceProcessConfig'>
+   # Problem: <class 'dict'>
+   ```
+
+2. **Fix Configuration Construction:**
+   ```python
+   # WRONG - passing raw dict
+   config = {"spotfinder_threshold_algorithm": "dispersion"}
+   
+   # CORRECT - using proper configuration class
+   from diffusepipe.types.types_IDL import DIALSSequenceProcessConfig
+   config = DIALSSequenceProcessConfig(
+       spotfinder_threshold_algorithm="dispersion"
+   )
+   ```
+
+3. **Validate Configuration Fields:**
+   - Check that all required fields are present
+   - Verify field names match the configuration class definition
+   - Ensure proper type conversion (strings, floats, booleans)
+
+### Data Type Detection Failures
+
+**Log Pattern:**
+```
+num stills: 0
+sweep: 1
+```
+
+**Interpretation:** DIALS import detects sequence data (oscillation), not still data.
+
+**Common Issues:**
+1. **Incorrect Adapter Selection:**
+   - Code attempts to use `DIALSStillsProcessAdapter` on sequence data
+   - Should use `DIALSSequenceProcessAdapter` for oscillation data
+
+2. **CBF Header Detection Failure:**
+   - Module 1.S.0 data type detection may be bypassed or failing
+   - Manual check: `grep "Angle_increment" your_file.cbf`
+
+3. **Configuration Override Issues:**
+   - `force_processing_mode` setting may be incorrect
+   - Routing logic may have bugs in condition checking
+
+**Debugging Approach:**
+```python
+# Add explicit logging in data type detection
+logger.info(f"CBF Angle_increment detected: {angle_increment}")
+logger.info(f"Processing route selected: {processing_route}")
+logger.info(f"Adapter type being used: {type(adapter)}")
+```
+
 ## DIALS Python API Issues
 
 ### Import Problems
@@ -91,6 +161,23 @@ indexer_obj = indexer.Indexer.from_parameters(reflections, experiments, params)
 - Prefer CLI-based subprocess calls for production code
 - Use Python API only for data access, not processing
 - Implement fallback mechanisms
+
+### PHIL Scope Import Changes
+
+**Common Failure:**
+```python
+# This breaks in newer DIALS versions:
+from dials.command_line.stills_process import master_phil_scope
+
+# Correct approach:
+from dials.command_line.stills_process import phil_scope
+```
+
+**Fix Strategy:**
+1. Check DIALS version and documentation
+2. Update import statements systematically
+3. Test imports before main logic execution
+4. Use try-catch blocks for version compatibility
 
 ## Validation Issues
 

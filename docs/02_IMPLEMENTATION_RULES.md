@@ -29,7 +29,27 @@ This document outlines the standard conventions, patterns, and rules for impleme
     *   Group imports in the standard order: standard library, third-party, project-specific.
     *   Place imports at the top of the module. Avoid imports inside functions/methods unless absolutely necessary for specific reasons (e.g., avoiding circular dependencies, optional heavy imports) and document the reason clearly.
 
-**4. Coding Style and Formatting**
+**4. Safe Refactoring Practices**
+
+*   **Incremental Approach:** When refactoring large methods or classes (>100 lines), work in small increments of 5-10 lines at a time. Never attempt to replace 300+ lines in a single operation.
+*   **Syntax Verification:** After each change, verify file syntax immediately: `python -m py_compile file.py`. Do not proceed to the next change until syntax is confirmed correct.
+*   **Frequent Commits:** Commit working code after each successful incremental change. This provides recovery points if later changes introduce issues.
+*   **Extract First, Then Modify:** When moving code to new files, create and test the new file completely before modifying the original. Never perform both operations simultaneously.
+*   **Verify Imports:** After any refactoring involving imports, test that all imports work before proceeding with method calls or class usage.
+*   **Avoid Complex String Replacements:** For large method extractions, manual verification is safer than complex multi-line string matching operations.
+
+**Critical Warning Signs:**
+*   File "appears" to work but contains syntax errors in unused code paths
+*   Duplicate method definitions with different signatures
+*   Orphaned code blocks with incorrect indentation
+*   Import statements without corresponding class usage
+
+**Recovery Strategy:**
+*   If refactoring corruption occurs, immediately revert to the last known good state using version control
+*   Restart refactoring with smaller incremental changes
+*   Use proper IDE/editor with syntax highlighting and error detection
+
+**5. Coding Style and Formatting**
 
 *   **Language Standards:** Strictly adhere to the idiomatic style guidelines for your project's primary language (e.g., PEP 8 for Python). Use linters and formatters.
 *   **Type Hinting (Python Example):**
