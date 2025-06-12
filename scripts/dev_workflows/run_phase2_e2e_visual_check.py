@@ -349,7 +349,7 @@ def run_phase1_mask_generation(
     global_pixel_mask_tuple = pixel_generator.generate_combined_pixel_mask(
         detector=detector,
         static_params=static_params,
-        imagesets=[imageset],
+        representative_images=[imageset],
         dynamic_params=dynamic_params,
     )
 
