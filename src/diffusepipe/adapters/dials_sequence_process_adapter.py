@@ -4,7 +4,7 @@ import logging
 import tempfile
 import subprocess
 from pathlib import Path
-from typing import Optional, Tuple, Union, Dict, List
+from typing import Optional, Tuple, Dict, List
 
 from diffusepipe.exceptions import DIALSError, ConfigurationError, DataValidationError
 from diffusepipe.types.types_IDL import DIALSStillsProcessConfig
@@ -70,10 +70,9 @@ class DIALSSequenceProcessAdapter:
                 # Parse base PHIL file
                 with open(base_file, "r") as f:
                     base_phil_content = f.read()
-                base_phil = parse(base_phil_content)
+                parse(base_phil_content)  # Validate PHIL syntax
 
-                # Extract parameters from base PHIL
-                extracted_params = base_phil.extract()
+                # Base PHIL file loaded successfully  
                 logger.debug(f"Loaded base PHIL parameters for {step} from {base_file}")
 
             except Exception as e:
@@ -215,7 +214,7 @@ class DIALSSequenceProcessAdapter:
 
                     # Step 1: Import
                     logger.info("Step 1: Running dials.import")
-                    import_result = self._run_dials_import(str(abs_image_path))
+                    self._run_dials_import(str(abs_image_path))
                     log_messages.append("Completed dials.import")
 
                     if not Path("imported.expt").exists():
@@ -223,7 +222,7 @@ class DIALSSequenceProcessAdapter:
 
                     # Step 2: Find spots
                     logger.info("Step 2: Running dials.find_spots")
-                    spots_result = self._run_dials_find_spots(config)
+                    self._run_dials_find_spots(config)
                     log_messages.append("Completed dials.find_spots")
 
                     if not Path("strong.refl").exists():
@@ -233,7 +232,7 @@ class DIALSSequenceProcessAdapter:
 
                     # Step 3: Index
                     logger.info("Step 3: Running dials.index")
-                    index_result = self._run_dials_index(config)
+                    self._run_dials_index(config)
                     log_messages.append("Completed dials.index")
 
                     if not Path("indexed.expt").exists():
@@ -241,7 +240,7 @@ class DIALSSequenceProcessAdapter:
 
                     # Step 4: Integrate
                     logger.info("Step 4: Running dials.integrate")
-                    integrate_result = self._run_dials_integrate(config)
+                    self._run_dials_integrate(config)
                     log_messages.append("Completed dials.integrate")
 
                     if not Path("integrated.expt").exists():
