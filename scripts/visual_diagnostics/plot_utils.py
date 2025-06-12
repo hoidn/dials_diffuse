@@ -397,6 +397,301 @@ def close_all_figures():
     plt.close("all")
 
 
+def plot_3d_grid_slice(
+    grid_data_3d: np.ndarray,
+    slice_dim_idx: int,
+    slice_val_idx: int,
+    title: str,
+    output_path: str,
+    cmap: str = "viridis",
+    norm: Optional[Any] = None,
+    xlabel: str = "H",
+    ylabel: str = "K",
+    aspect: str = "auto",
+) -> plt.Figure:
+    """
+    Plot a 2D slice through a 3D grid.
+
+    Args:
+        grid_data_3d: 3D numpy array with shape (H, K, L)
+        slice_dim_idx: Dimension to slice (0=H, 1=K, 2=L)
+        slice_val_idx: Index along slice dimension
+        title: Plot title
+        output_path: Path to save the plot
+        cmap: Colormap name
+        norm: Color normalization (e.g., LogNorm)
+        xlabel: X-axis label
+        ylabel: Y-axis label
+        aspect: Aspect ratio ('auto', 'equal')
+
+    Returns:
+        matplotlib Figure object
+    """
+    # Extract the 2D slice
+    if slice_dim_idx == 0:  # H slice
+        slice_data = grid_data_3d[slice_val_idx, :, :]
+        xlabel = "K"
+        ylabel = "L"
+    elif slice_dim_idx == 1:  # K slice
+        slice_data = grid_data_3d[:, slice_val_idx, :]
+        xlabel = "H"
+        ylabel = "L"
+    elif slice_dim_idx == 2:  # L slice
+        slice_data = grid_data_3d[:, :, slice_val_idx]
+        xlabel = "H"
+        ylabel = "K"
+    else:
+        raise ValueError("slice_dim_idx must be 0, 1, or 2")
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    # Create the image plot
+    im = ax.imshow(
+        slice_data,
+        cmap=cmap,
+        norm=norm,
+        origin="lower",
+        aspect=aspect,
+        interpolation="nearest",
+    )
+
+    # Add colorbar
+    plt.colorbar(im, ax=ax)
+
+    # Set title and labels
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+
+    # Save plot
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    logger.info(f"Saved 3D grid slice plot to {output_path}")
+
+    return fig
+
+
+def plot_radial_average(
+    q_magnitudes: np.ndarray,
+    intensities: np.ndarray,
+    num_bins: int,
+    title: str,
+    output_path: str,
+    sigmas: Optional[np.ndarray] = None,
+) -> plt.Figure:
+    """
+    Plot radial average of intensities vs q-magnitude.
+
+    Args:
+        q_magnitudes: Array of q-magnitude values
+        intensities: Array of intensity values
+        num_bins: Number of bins for radial averaging
+        title: Plot title
+        output_path: Path to save the plot
+        sigmas: Optional array of sigma values for error bars
+
+    Returns:
+        matplotlib Figure object
+    """
+    # Remove invalid data
+    valid_mask = np.isfinite(q_magnitudes) & np.isfinite(intensities)
+    q_valid = q_magnitudes[valid_mask]
+    I_valid = intensities[valid_mask]
+    
+    if sigmas is not None:
+        sigmas_valid = sigmas[valid_mask]
+    else:
+        sigmas_valid = None
+
+    if len(q_valid) == 0:
+        logger.warning("No valid data for radial average plot")
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.text(0.5, 0.5, "No valid data", ha="center", va="center")
+        ax.set_title(title)
+        fig.savefig(output_path, dpi=150, bbox_inches="tight")
+        return fig
+
+    # Create bins
+    q_min, q_max = np.min(q_valid), np.max(q_valid)
+    if q_min == q_max:
+        q_max = q_min + 1e-6  # Avoid zero width
+    
+    bin_edges = np.linspace(q_min, q_max, num_bins + 1)
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+
+    # Bin the data
+    bin_indices = np.digitize(q_valid, bin_edges) - 1
+    bin_indices = np.clip(bin_indices, 0, num_bins - 1)
+
+    mean_intensities = []
+    std_intensities = []
+    
+    for i in range(num_bins):
+        mask = bin_indices == i
+        if np.any(mask):
+            I_bin = I_valid[mask]
+            mean_intensities.append(np.mean(I_bin))
+            
+            if sigmas_valid is not None:
+                # Propagate uncertainties: std error of mean
+                weights = 1.0 / (sigmas_valid[mask] ** 2)
+                weighted_mean = np.average(I_bin, weights=weights)
+                weighted_std = np.sqrt(1.0 / np.sum(weights))
+                std_intensities.append(weighted_std)
+            else:
+                std_intensities.append(np.std(I_bin) / np.sqrt(len(I_bin)))
+        else:
+            mean_intensities.append(np.nan)
+            std_intensities.append(np.nan)
+
+    mean_intensities = np.array(mean_intensities)
+    std_intensities = np.array(std_intensities)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # Plot with error bars if available
+    if sigmas is not None:
+        ax.errorbar(
+            bin_centers,
+            mean_intensities,
+            yerr=std_intensities,
+            fmt="o-",
+            markersize=4,
+            linewidth=1,
+            capsize=3,
+        )
+    else:
+        ax.plot(bin_centers, mean_intensities, "o-", markersize=4, linewidth=1)
+
+    ax.set_xlabel("Q (Å⁻¹)")
+    ax.set_ylabel("Mean Intensity")
+    ax.set_title(title)
+    ax.grid(True, alpha=0.3)
+
+    # Save plot
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    logger.info(f"Saved radial average plot to {output_path}")
+
+    return fig
+
+
+def plot_parameter_vs_index(
+    param_values: np.ndarray,
+    index_values: np.ndarray,
+    title: str,
+    param_label: str,
+    index_label: str,
+    output_path: str,
+) -> plt.Figure:
+    """
+    Plot parameter values vs index (e.g., scaling factors vs still index).
+
+    Args:
+        param_values: Array of parameter values
+        index_values: Array of index values
+        title: Plot title
+        param_label: Y-axis label for parameter
+        index_label: X-axis label for index
+        output_path: Path to save the plot
+
+    Returns:
+        matplotlib Figure object
+    """
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    ax.plot(index_values, param_values, "o-", markersize=4, linewidth=1)
+
+    ax.set_xlabel(index_label)
+    ax.set_ylabel(param_label)
+    ax.set_title(title)
+    ax.grid(True, alpha=0.3)
+
+    # Add statistics
+    mean_val = np.mean(param_values)
+    std_val = np.std(param_values)
+    ax.axhline(mean_val, color="red", linestyle="--", alpha=0.7, label=f"Mean: {mean_val:.3f}")
+    ax.axhline(mean_val + std_val, color="orange", linestyle=":", alpha=0.7, label=f"±1σ: {std_val:.3f}")
+    ax.axhline(mean_val - std_val, color="orange", linestyle=":", alpha=0.7)
+    ax.legend()
+
+    # Save plot
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    logger.info(f"Saved parameter vs index plot to {output_path}")
+
+    return fig
+
+
+def plot_smoother_curve(
+    smoother_eval_func: callable,
+    x_range: Tuple[float, float],
+    num_points: int,
+    title: str,
+    output_path: str,
+    control_points_x: Optional[np.ndarray] = None,
+    control_points_y: Optional[np.ndarray] = None,
+) -> plt.Figure:
+    """
+    Plot a smoother curve with optional control points.
+
+    Args:
+        smoother_eval_func: Function that evaluates the smoother at given x values
+        x_range: Tuple of (x_min, x_max) for plotting range
+        num_points: Number of points to evaluate the curve
+        title: Plot title
+        output_path: Path to save the plot
+        control_points_x: Optional x-coordinates of control points
+        control_points_y: Optional y-coordinates of control points
+
+    Returns:
+        matplotlib Figure object
+    """
+    # Generate evaluation points
+    x_eval = np.linspace(x_range[0], x_range[1], num_points)
+    
+    try:
+        y_eval = smoother_eval_func(x_eval)
+    except Exception as e:
+        logger.error(f"Failed to evaluate smoother function: {e}")
+        # Create a fallback plot
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.text(0.5, 0.5, f"Failed to evaluate smoother: {e}", ha="center", va="center")
+        ax.set_title(title)
+        fig.savefig(output_path, dpi=150, bbox_inches="tight")
+        return fig
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # Plot the smooth curve
+    ax.plot(x_eval, y_eval, "-", linewidth=2, label="Smoother curve")
+
+    # Plot control points if provided
+    if control_points_x is not None and control_points_y is not None:
+        ax.scatter(
+            control_points_x,
+            control_points_y,
+            c="red",
+            s=50,
+            marker="o",
+            label="Control points",
+            zorder=5,
+        )
+
+    ax.set_xlabel("Q (Å⁻¹)")
+    ax.set_ylabel("Correction Factor")
+    ax.set_title(title)
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+
+    # Save plot
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    logger.info(f"Saved smoother curve plot to {output_path}")
+
+    return fig
+
+
 def setup_logging_for_plots():
     """Set up logging configuration for plotting scripts."""
     logging.basicConfig(

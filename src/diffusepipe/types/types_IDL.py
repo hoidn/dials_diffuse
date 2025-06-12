@@ -133,6 +133,23 @@ class RelativeScalingConfig(BaseModel):
         0.1,
         description="Minimum P_spot threshold for including Bragg reflections in reference generation",
     )
+    # Phase 3 additional configuration
+    grid_config: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Configuration for GlobalVoxelGrid (d_min_target, d_max_target, ndiv_h/k/l)",
+    )
+    voxel_accumulator_backend: str = Field(
+        "memory",
+        description="Backend for VoxelAccumulator: 'memory' or 'hdf5'",
+    )
+    refinement_config: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Configuration for scaling refinement (max_iterations, convergence_tolerance)",
+    )
+    merge_config: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Configuration for data merging (outlier_rejection, minimum_observations)",
+    )
 
 
 class StillsPipelineConfig(BaseModel):

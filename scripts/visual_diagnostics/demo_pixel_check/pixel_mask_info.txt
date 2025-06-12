@@ -1,0 +1,23 @@
+Pixel Mask Generation Visual Check Results
+=============================================
+
+Number of detector panels: 1
+
+Panel 0 (2463x2527 pixels):
+  Total pixels: 6224001
+  Static mask good pixels: 6224001 (100.0%)
+  Dynamic mask good pixels: 6224001 (100.0%)
+  Combined mask good pixels: 6224001 (100.0%)
+  Static mask rejected: 0 pixels
+  Dynamic mask rejected: 0 pixels
+  Total rejected: 0 pixels
+
+Configuration used:
+  Static mask parameters:
+    Beamstop: None
+    Untrusted rectangles: 0
+    Untrusted panels: None
+  Dynamic mask parameters:
+    Hot pixel threshold: 1000000.0
+    Negative pixel tolerance: 0.0
+    Max bad pixel fraction: 0.1

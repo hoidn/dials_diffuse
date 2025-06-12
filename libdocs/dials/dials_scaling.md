@@ -16,7 +16,7 @@ Comprehensive framework for implementing custom scaling models, components, and 
 
 **2. Primary Python Call(s):**
 ```python
-from dials.algorithms.scaling.model import ScalingModelBase
+from dials.algorithms.scaling.model.model import ScalingModelBase
 from dials.algorithms.scaling.model.components.scale_components import ScaleComponentBase
 from dials.algorithms.scaling.model.components.smooth_scale_components import (
     GaussianSmoother1D, GaussianSmoother2D, GaussianSmoother3D
@@ -72,7 +72,7 @@ class CustomScaleComponent(ScaleComponentBase):
 
 **5. Example Usage - Custom Scaling Model:**
 ```python
-from dials.algorithms.scaling.model import ScalingModelBase
+from dials.algorithms.scaling.model.model import ScalingModelBase
 from dials.algorithms.scaling.model.components.scale_components import ScaleComponentBase
 from dials.algorithms.scaling.active_parameter_managers import active_parameter_manager
 from dials.array_family import flex
