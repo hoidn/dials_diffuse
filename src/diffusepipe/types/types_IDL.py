@@ -109,6 +109,9 @@ class ExtractionConfig(BaseModel):
     save_original_pixel_coordinates: bool = Field(
         True, description="If true, saves original panel IDs and pixel coordinates in NPZ output for visual diagnostics"
     )
+    external_pdb_path: Optional[str] = Field(
+        None, description="Path to an external PDB file used for consistency checks"
+    )
 
 
 class RelativeScalingConfig(BaseModel):
@@ -157,7 +160,10 @@ class StillsPipelineConfig(BaseModel):
 
     dials_stills_process_config: DIALSStillsProcessConfig
     extraction_config: ExtractionConfig
-    relative_scaling_config: RelativeScalingConfig
+    relative_scaling_config: Optional[RelativeScalingConfig] = Field(
+        None,
+        description="Configuration for Phase 3 relative scaling. If None, Phase 3 is skipped"
+    )
     run_consistency_checker: bool = Field(
         description="If true, ConsistencyChecker is run after successful extraction"
     )

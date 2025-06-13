@@ -110,8 +110,12 @@ class ResolutionSmootherComponent(ScaleComponentBase):
             q_clamp = max(self.q_min, min(self.q_max, q))
             q_clamped.append(q_clamp)
         
-        # Evaluate smoother
-        scales, derivatives = self.smoother.value_error_for_location(q_clamped)
+        # Evaluate smoother - need to provide current parameter values
+        current_params = self.parameters
+        result = self.smoother.multi_value_weight(q_clamped, current_params)
+        scales = result[0]  # The interpolated values
+        derivatives_matrix = result[1]  # Derivatives matrix (not used here)
+        # Note: derivatives matrix would be used for refinement
         
         # For multiplicative scaling, we want positive values
         # Apply softplus-like transformation to ensure positivity
@@ -122,11 +126,11 @@ class ResolutionSmootherComponent(ScaleComponentBase):
             positive_scale = max(0.01, float(scale))  # Minimum scale
             scales_positive.append(positive_scale)
         
-        # Derivatives need to be transformed accordingly
-        # For now, use simple approach - could be more sophisticated
-        derivatives_transformed = derivatives
+        # Return scales and derivatives (derivatives matrix not implemented for now)
+        # For DIALS compatibility, we return a flex.double for derivatives
+        derivatives_dummy = flex.double(len(scales_positive))
         
-        return scales_positive, derivatives_transformed
+        return scales_positive, derivatives_dummy
     
     def _extract_q_magnitudes(self, reflection_table):
         """
@@ -182,16 +186,13 @@ class ResolutionSmootherComponent(ScaleComponentBase):
         # Clamp to smoother range
         q_clamp = max(self.q_min, min(self.q_max, q_magnitude))
         
-        # Update smoother with current parameters
+        # Evaluate at single point using value_weight
         current_params = self.parameters
-# Parameter setting handled by parent class
-        
-        # Evaluate at single point
-        q_array = flex.double([q_clamp])
-        scales, _ = self.smoother.value_error_for_location(q_array)
+        result = self.smoother.value_weight(q_clamp, current_params)
+        scale_value = result[0]  # Single interpolated value
         
         # Ensure positive scale
-        scale = max(0.01, float(scales[0]))
+        scale = max(0.01, float(scale_value))
         return scale
     
     def get_component_info(self) -> dict:

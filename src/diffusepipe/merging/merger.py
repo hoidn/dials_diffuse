@@ -213,6 +213,10 @@ class DiffuseDataMerger:
         if not scaled_observations:
             raise ValueError("No observations to merge")
         
+        # Validate weight method first
+        if weight_method not in ["inverse_variance", "uniform"]:
+            raise ValueError(f"Unknown weight method: {weight_method}")
+        
         n_obs = len(scaled_observations)
         
         if n_obs == 1:
@@ -231,8 +235,6 @@ class DiffuseDataMerger:
         elif weight_method == "uniform":
             # Equal weights
             weights = np.ones(n_obs)
-        else:
-            raise ValueError(f"Unknown weight method: {weight_method}")
         
         # Handle edge cases
         if np.sum(weights) <= 0:
