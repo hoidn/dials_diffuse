@@ -24,11 +24,18 @@ These rules are mandatory and **override** your normal relevance assessment. You
     *   Assign it a **very high score (e.g., 9.0 or higher)**.
     *   Use the justification: "Included as a mandatory core project document as specified in the <critical> context section."
 
-2.  **Test File Mandate:** If the `<planned task>` involves modifying an existing file (e.g., `src/utils/parser.py`), you **MUST** find its corresponding test file (e.g., `tests/test_parser.py`). You **MUST** classify this test file as "Relevant" and assign it a **high score (e.g., 8.0 or higher)**. Its justification should state: "Mandatory inclusion of the test file for the modified source code."
+2.  **Test File Mandate:** If the `<planned task>` involves modifying an existing file (e.g., `src/utils/parser.py`), you **MUST** find its corresponding test file (e.g., `tests/test_parser.py`). You **MUST** classify this file as "Relevant" and assign it a **high score (e.g., 8.0 or higher)**. Its justification should state: "Mandatory inclusion of the test file for the modified source code."
 
-3.  **Checklist Example Mandate:** If the `<planned task>` involves drafting, creating, or modifying a checklist, you **MUST** find the best example of an existing checklist (see checklists/) in the codebase. You **MUST** classify this file as "Relevant" and assign it a **high score (e.g., 8.0 or higher)**. Its justification should state: "Included as a mandatory style and format reference for the checklist creation task."
+3.  **Checklist Example Mandate:** If the `<planned task>` involves drafting, creating, or modifying a checklist, you **MUST** find the best example of an existing checklist (see `checklists/`) in the codebase. You **MUST** classify this file as "Relevant" and assign it a **high score (e.g., 8.0 or higher)**. Its justification should state: "Included as a mandatory style and format reference for the checklist creation task."
 
 4.  **Plan Example Mandate:** If the `<planned task>` involves drafting a plan, you **MUST** find the best example of an existing plan document. You **MUST** classify this file as "Relevant" and assign it a **high score (e.g., 8.0 or higher)**. Its justification should state: "Included as a mandatory style and format reference for the planning task."
+
+5.  **DIALS Documentation Mandate:** You **MUST** review all files in the `libdocs/dials/` directory. If the `<planned task>` involves using or interacting with DIALS/DXTBX/CCTBX functionality, you **MUST** identify the specific API documentation sections relevant to the task. For each relevant section, you **MUST**:
+    *   Create an entry in the `documentation_excerpts` array.
+    *   Assign it a **high score (e.g., 7.0 or higher)**.
+    *   Set the `source` field to the path of the documentation file (e.g., `libdocs/dials/dxtbx_models.md`).
+    *   Set the `title` field to the specific section header from the documentation (e.g., "B.3. Crystal Model (experiment.crystal)").
+    *   For the `content` field, **literally quote the entire relevant section** from the documentation file, including the title, description, code examples, and notes.
 
 ### **Instructions**
 
@@ -43,7 +50,7 @@ Iterate through every file provided in the code context, applying the **Core Phi
 1.  **Classify its Relevance:** Categorize the file as "Relevant", "Maybe Relevant", or "Irrelevant". **When in doubt, classify as "Maybe Relevant" instead of "Irrelevant".**
 2.  **Score its Importance:** For all "Relevant" and "Maybe Relevant" files, assign an importance score from 1.0 to 10.0, keeping the **CRITICAL INCLUSION RULES** in mind. Use the following revised guide:
     *   **10.0: Critically Important.** The file is being directly created, edited, or is the primary subject of the task.
-    *   **7.0 - 9.9: Highly Relevant.** Provides core logic, data models, direct dependencies (imports/exports), is a mandatory test file, or is a core project document from the `<critical>` section.
+    *   **7.0 - 9.9: Highly Relevant.** Provides core logic, data models, direct dependencies (imports/exports), is a mandatory test file, is a core project document from the `<critical>` section, or is a critical API doc excerpt.
     *   **4.0 - 6.9: Contextually Relevant.** Provides useful surrounding context, shared utilities, configuration, or is a parent/child component that is not directly modified but is affected.
     *   **1.0 - 3.9: Potentially Relevant.** Included for broader context or as a style/pattern example. Useful for understanding the "bigger picture" or related conventions.
 3.  **Justify the Classification:** For every file, write a `description` of its purpose and a `justification` for its classification and score. The justification must explain *why* the file is or isn't relevant, referencing your analysis (e.g., "This file defines the data model consumed by `relevant_file.py`," or "This config file sets variables used in the target module.").
@@ -51,13 +58,14 @@ Iterate through every file provided in the code context, applying the **Core Phi
 **Step 3: Content Inclusion**
 Prepare the file content for the final package. This step populates the `included_files` and `documentation_excerpts` arrays.
 *   **For "Relevant" and "Maybe Relevant" code files:** Add an entry to the `included_files` array. Use the Jinja-style template syntax `{file_path}` in the `content` field.
-*   **For large documentation files (e.g., under `libdocs/`):** Do not include the full file. Instead, identify the most relevant sections, create a targeted excerpt, and add an entry to the `documentation_excerpts` array.
+*   **For documentation files, especially `libdocs/dials/`:** Do not include the full file. Instead, follow the **DIALS Documentation Mandate** (Rule #5) to identify and literally quote relevant sections into the `documentation_excerpts` array. For other large documentation files, create targeted excerpts.
 
 **Step 4: Final Validation and Assembly**
 Before generating the final JSON, perform a final review of your work. **Verify the following:**
 - **Have you fully embraced the Core Philosophy of including all potentially useful files?**
 - **Have you obeyed all CRITICAL INCLUSION RULES? Specifically:**
     - **Have you included all files from the `<critical>` section with a high score?**
+    - **Have you included the required DIALS documentation excerpts?**
     - Have you included the required test files, checklist examples, or plan examples if the task dictated it?
 - Is the JSON structure perfectly valid?
 - Are all file lists sorted by `score` in descending order?
