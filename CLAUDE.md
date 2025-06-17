@@ -116,6 +116,8 @@ bash src/scripts/process_pipeline.sh path/to/image.cbf --external_pdb path/to/re
 ## Other bash commands:
 # generating a task-aware context file:
 repomix --include "**/*.md,**/*.py,**/*.phil" --ignore .aider.chat.history.md
+{ (echo "<prompt>"; cat .claude/commands/context.md; echo "</prompt>"); (echo "<planned task>"; cat task.txt; echo "</planned task>"); (echo "<critical>"; cat critical.md; echo "</critical>"); (echo "<code context>"; cat repomix-output.xml; echo "</code context>"); } > prompt.txt
+llm -m gemini-2.5-pro-preview-06-05 <  prompt.txt > context_package.json
 bash adaptive_substitute.sh context_package.json 10000 expanded_context.txt
 
 ## Development Process
