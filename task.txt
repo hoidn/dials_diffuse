@@ -1,0 +1,5 @@
+We will be improving the phase 3 visual diagnostic check, which currently incorrectly uses mocks. We will also update the proj conventions to prevent similar errors in future development. 
+relevant context might include:
+- code
+- docs 
+- phase 2 e2e visual check script (as an example)
