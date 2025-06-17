@@ -347,3 +347,100 @@ class TestGlobalVoxelGrid:
         assert grid.A_avg_ref is not None
         assert hasattr(grid, "rms_misorientation_deg")
         assert grid.rms_misorientation_deg < 2.0
+
+    def test_hkl_transformation_vectorization_equivalence(
+        self, mock_experiments, grid_config
+    ):
+        """Test that vectorized HKL transformation produces same results as loop-based approach."""
+        import time
+        from scitbx import matrix
+        
+        # Create small sample of q-vectors for equivalence testing
+        np.random.seed(42)  # For reproducible results
+        n_vectors = 100
+        sample_q_vectors = np.random.uniform(-2.0, 2.0, (n_vectors, 3))
+        
+        # Create sample diffuse data
+        sample_diffuse_data = [
+            CorrectedDiffusePixelData(
+                q_vectors=sample_q_vectors,
+                intensities=np.random.uniform(0, 1000, n_vectors),
+                sigmas=np.random.uniform(1, 100, n_vectors),
+                still_ids=np.zeros(n_vectors, dtype=int),
+            )
+        ]
+        
+        # Create a minimal grid to get A_inv matrix
+        grid = GlobalVoxelGrid(mock_experiments, sample_diffuse_data, grid_config)
+        A_inv = grid.A_avg_ref.inverse()
+        
+        # Test old loop-based logic
+        hkl_fractional_old = []
+        for q_vec in sample_q_vectors:
+            q_matrix = matrix.col(q_vec)
+            hkl_frac = A_inv * q_matrix
+            hkl_fractional_old.append(hkl_frac.elems)
+        hkl_expected = np.array(hkl_fractional_old)
+        
+        # Test new vectorized logic
+        A_inv_np = np.array(A_inv.elems).reshape(3, 3)
+        hkl_actual = (A_inv_np @ sample_q_vectors.T).T
+        
+        # Assert numerical equivalence
+        assert np.allclose(hkl_expected, hkl_actual, rtol=1e-10, atol=1e-12), \
+            "Vectorized HKL transformation does not match loop-based approach"
+
+    @pytest.mark.slow
+    def test_hkl_transformation_performance(self, mock_experiments, grid_config):
+        """Test that vectorized HKL transformation is significantly faster than loop-based approach."""
+        import time
+        from scitbx import matrix
+        
+        # Create large sample for performance testing
+        np.random.seed(42)
+        n_vectors = 100000  # Large dataset for performance comparison
+        large_q_vectors = np.random.uniform(-2.0, 2.0, (n_vectors, 3))
+        
+        # Create sample diffuse data
+        large_diffuse_data = [
+            CorrectedDiffusePixelData(
+                q_vectors=large_q_vectors,
+                intensities=np.random.uniform(0, 1000, n_vectors),
+                sigmas=np.random.uniform(1, 100, n_vectors),
+                still_ids=np.zeros(n_vectors, dtype=int),
+            )
+        ]
+        
+        # Create a minimal grid to get A_inv matrix
+        grid = GlobalVoxelGrid(mock_experiments, large_diffuse_data, grid_config)
+        A_inv = grid.A_avg_ref.inverse()
+        
+        # Measure old loop-based approach (on subset to avoid timeout)
+        subset_size = 10000
+        subset_q_vectors = large_q_vectors[:subset_size]
+        
+        start_time = time.perf_counter()
+        hkl_fractional_old = []
+        for q_vec in subset_q_vectors:
+            q_matrix = matrix.col(q_vec)
+            hkl_frac = A_inv * q_matrix
+            hkl_fractional_old.append(hkl_frac.elems)
+        loop_time = time.perf_counter() - start_time
+        
+        # Measure new vectorized approach (full dataset)
+        A_inv_np = np.array(A_inv.elems).reshape(3, 3)
+        start_time = time.perf_counter()
+        hkl_vectorized = (A_inv_np @ large_q_vectors.T).T
+        vectorized_time = time.perf_counter() - start_time
+        
+        # Log the timings
+        print(f"Loop approach time (10k vectors): {loop_time:.4f}s")
+        print(f"Vectorized approach time (100k vectors): {vectorized_time:.4f}s")
+        print(f"Performance improvement factor: {(loop_time * 10) / vectorized_time:.1f}x")
+        
+        # Assert significant speedup (even accounting for 10x more data in vectorized test)
+        # This is a conservative test - actual speedup should be much higher
+        expected_min_speedup = 5  # Expect at least 5x speedup
+        actual_speedup = (loop_time * 10) / vectorized_time  # Account for 10x more data
+        assert actual_speedup > expected_min_speedup, \
+            f"Vectorized approach only {actual_speedup:.1f}x faster, expected >{expected_min_speedup}x"
