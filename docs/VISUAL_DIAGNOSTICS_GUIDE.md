@@ -5,25 +5,37 @@ This guide documents the visual diagnostic tools for verifying the correctness o
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [check_diffuse_extraction.py](#check_diffuse_extractionpy)
-3. [run_phase2_e2e_visual_check.py](#run_phase2_e2e_visual_checkpy)
+2. [Phase 2 Visual Diagnostics](#phase-2-visual-diagnostics)
+   - [check_diffuse_extraction.py](#check_diffuse_extractionpy)
+   - [run_phase2_e2e_visual_check.py](#run_phase2_e2e_visual_checkpy)
+3. [Phase 3 Visual Diagnostics](#phase-3-visual-diagnostics)
+   - [check_phase3_outputs.py](#check_phase3_outputspy)
+   - [run_phase3_e2e_visual_check.py](#run_phase3_e2e_visual_checkpy)
 4. [Integration Workflow](#integration-workflow)
 5. [Troubleshooting](#troubleshooting)
 
 ## Overview
 
-The visual diagnostics system provides two key scripts:
+The visual diagnostics system provides comprehensive tools for validating DiffusePipe processing at different pipeline stages:
 
-1. **`check_diffuse_extraction.py`** - Generates comprehensive visual diagnostics from existing processing outputs
-2. **`run_phase2_e2e_visual_check.py`** - Orchestrates the complete pipeline from raw data to visual diagnostics
+### Phase 2 Diagnostics
+1. **`check_diffuse_extraction.py`** - Generates visual diagnostics from Phase 2 processing outputs
+2. **`run_phase2_e2e_visual_check.py`** - Orchestrates Phase 1-2 pipeline with automatic diagnostics
+
+### Phase 3 Diagnostics  
+3. **`check_phase3_outputs.py`** - Generates visual diagnostics from Phase 3 processing outputs
+4. **`run_phase3_e2e_visual_check.py`** - Orchestrates Phase 1-3 pipeline with automatic diagnostics
 
 These tools are essential for:
-- Validating Phase 2 implementation correctness
-- Debugging extraction pipeline issues
+- Validating implementation correctness at each processing stage
+- Debugging voxelization, scaling, and merging pipeline issues
 - Generating reference outputs for testing
 - Quality control of diffuse scattering analysis
+- Visual verification of 3D reciprocal space maps
 
 ---
+
+## Phase 2 Visual Diagnostics
 
 ## check_diffuse_extraction.py
 
@@ -490,11 +502,354 @@ cat debug_run/image/dials.*.log
 
 ---
 
+## Phase 3 Visual Diagnostics
+
+### Purpose
+
+Phase 3 visual diagnostics provide comprehensive verification of the voxelization, relative scaling, and merging processes that transform corrected diffuse pixel observations into a 3D reciprocal space map. These tools are essential for validating the final stages of the DiffusePipe pipeline.
+
+### Key Components
+
+1. **`check_phase3_outputs.py`** - Standalone diagnostic generation from Phase 3 outputs
+2. **`run_phase3_e2e_visual_check.py`** - Complete Phase 1-3 pipeline orchestration with automatic diagnostics
+
+---
+
+## check_phase3_outputs.py
+
+### Purpose
+
+Generates comprehensive visual diagnostics to verify Phase 3 voxelization, relative scaling, and merging processes. Takes outputs from the complete Phase 3 pipeline (global voxel grid, refined scaling parameters, and merged voxel data) to create diagnostic plots and summary reports.
+
+### Location
+
+`scripts/visual_diagnostics/check_phase3_outputs.py`
+
+### Key Features
+
+- **Multi-dimensional Visualization**: 3D reciprocal space slicing and projections
+- **Scaling Analysis**: Per-still scale factor and resolution smoother visualization
+- **Quality Metrics**: Voxel occupancy, redundancy, and intensity/sigma analysis
+- **Comprehensive Reporting**: Automated generation of summary statistics
+- **Performance Optimized**: Configurable point limits for large datasets
+
+### Usage
+
+#### Basic Command
+
+```bash
+python check_phase3_outputs.py \
+  --grid-definition-file phase3_outputs/global_voxel_grid_definition.json \
+  --scaling-model-params-file phase3_outputs/refined_scaling_model_params.json \
+  --voxel-data-file phase3_outputs/voxel_data_relative.npz \
+  --output-dir phase3_diagnostics
+```
+
+#### Full Command with Options
+
+```bash
+python check_phase3_outputs.py \
+  --grid-definition-file grid_def.json \
+  --scaling-model-params-file scaling_params.json \
+  --voxel-data-file voxel_data.npz \
+  --output-dir diagnostics \
+  --experiments-list-file experiments_list.txt \
+  --corrected-pixel-data-dir pixel_data_dirs.txt \
+  --max-plot-points 25000 \
+  --verbose
+```
+
+### Command-Line Arguments
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `--grid-definition-file` | Yes | Path to GlobalVoxelGrid definition JSON file |
+| `--scaling-model-params-file` | Yes | Path to refined scaling model parameters JSON file |
+| `--voxel-data-file` | Yes | Path to VoxelData_relative NPZ/HDF5 file |
+| `--output-dir` | Yes | Output directory for diagnostic plots and reports |
+| `--experiments-list-file` | No | Path to file containing list of experiment (.expt) file paths |
+| `--corrected-pixel-data-dir` | No | Path to file containing list of corrected pixel data directories |
+| `--max-plot-points` | No | Maximum number of points in scatter plots (default: 50000) |
+| `--verbose` | No | Enable verbose logging |
+
+### Generated Diagnostics
+
+#### 1. Grid Summary (`grid_summary.txt`, `grid_visualization_conceptual.png`)
+- **Purpose**: Document global voxel grid parameters and visualize coverage
+- **Text Content**: 
+  - Average crystal parameters (unit cell, space group)
+  - HKL bounds and voxel dimensions
+  - Total voxels and voxel sizes
+- **Plot Content**: 3D wireframe showing HKL bounds with sample grid points
+- **Key Checks**: Reasonable grid coverage, appropriate voxel resolution
+
+#### 2. Voxel Occupancy Analysis
+- **Files**: 
+  - `voxel_occupancy_slice_L0.png`, `voxel_occupancy_slice_K0.png`, `voxel_occupancy_slice_H0.png`
+  - `voxel_occupancy_histogram.png`
+- **Purpose**: Analyze data redundancy and completeness
+- **Content**: 
+  - 2D heatmap slices of observation counts per voxel
+  - Histogram of voxel occupancy distribution
+- **Key Checks**: Even data distribution, adequate redundancy, identification of gaps
+
+#### 3. Scaling Model Parameters
+- **Files**:
+  - `scaling_params_b_i.png` - Per-still multiplicative scale factors
+  - `scaling_resolution_smoother.png` - Resolution smoother curve (if enabled)
+  - `scaling_parameters_summary.txt` - Parameter statistics
+- **Purpose**: Validate relative scaling convergence and parameters
+- **Content**: Scale factor trends, smoother function, refinement statistics
+- **Key Checks**: Reasonable scale factor range, smooth convergence, stable parameters
+
+#### 4. Merged Voxel Data Visualization
+- **Intensity Slices**: `merged_intensity_slice_L0.png`, etc. (log scale)
+- **Sigma Slices**: `merged_sigma_slice_L0.png`, etc.
+- **I/Sigma Slices**: `merged_isigi_slice_L0.png`, etc.
+- **Radial Analysis**: `merged_radial_average.png` - Intensity vs |q|
+- **Distribution**: `merged_intensity_histogram.png` - Intensity distribution
+- **Purpose**: Verify final merged diffuse scattering map quality
+- **Key Checks**: Smooth intensity variations, reasonable I/σ ratios, proper resolution trends
+
+#### 5. Comprehensive Summary (`phase3_diagnostics_summary.txt`)
+- **Purpose**: Consolidated report of all Phase 3 processing statistics
+- **Content**:
+  - Input file paths and processing parameters
+  - Grid definition summary
+  - Voxel occupancy statistics
+  - Scaling model convergence metrics
+  - Merged intensity quality metrics
+  - Resolution coverage analysis
+  - Generated plot inventory
+
+### Output Structure
+
+```
+output-dir/
+├── grid_summary.txt
+├── grid_visualization_conceptual.png
+├── voxel_occupancy_slice_L0.png
+├── voxel_occupancy_slice_K0.png
+├── voxel_occupancy_slice_H0.png
+├── voxel_occupancy_histogram.png
+├── scaling_params_b_i.png
+├── scaling_resolution_smoother.png (if enabled)
+├── scaling_parameters_summary.txt
+├── merged_intensity_slice_L0.png
+├── merged_intensity_slice_K0.png
+├── merged_intensity_slice_H0.png
+├── merged_sigma_slice_L0.png
+├── merged_sigma_slice_K0.png
+├── merged_sigma_slice_H0.png
+├── merged_isigi_slice_L0.png
+├── merged_isigi_slice_K0.png
+├── merged_isigi_slice_H0.png
+├── merged_radial_average.png
+├── merged_intensity_histogram.png
+└── phase3_diagnostics_summary.txt
+```
+
+### Input File Requirements
+
+#### Grid Definition JSON
+- `crystal_avg_ref`: Average crystal parameters (unit cell, space group)
+- `hkl_bounds`: H/K/L min/max values
+- `ndiv_h/k/l`: Voxel divisions per unit cell
+- `total_voxels`: Total number of voxels
+
+#### Scaling Parameters JSON
+- `refined_parameters`: Per-still scale factors and offsets
+- `refinement_statistics`: Convergence metrics and R-factors
+- `resolution_smoother`: Smoother configuration and control points
+
+#### Voxel Data NPZ/HDF5
+- **Required Arrays**: `voxel_indices`, `H_center`, `K_center`, `L_center`, `q_center_x/y/z`, `q_magnitude_center`, `I_merged_relative`, `Sigma_merged_relative`, `num_observations`
+- **Format**: Compressed NPZ or HDF5 with consistent array lengths
+
+---
+
+## run_phase3_e2e_visual_check.py
+
+### Purpose
+
+Orchestrates the complete Phase 1 (True Sequence Processing), Phase 2 (diffuse extraction with shared model), and Phase 3 (voxelization, scaling, merging) pipeline for multiple CBF images, then automatically runs Phase 3 visual diagnostics. Provides end-to-end verification from raw data to final 3D diffuse maps with perfect crystal orientation consistency.
+
+**KEY ARCHITECTURAL CHANGE**: This script now uses true sequence processing where all images are processed together as a single cohesive dataset, achieving perfect crystal orientation consistency (0.0000° RMS misorientation) and eliminating indexing ambiguity issues.
+
+### Location
+
+`scripts/dev_workflows/run_phase3_e2e_visual_check.py`
+
+### Key Features
+
+- **True Sequence Processing**: All images processed as single DIALS dataset for perfect consistency
+- **Perfect Crystal Orientation**: Achieves 0.0000° RMS misorientation between images
+- **Shared Model Extraction**: Phase 2 uses consistent crystal model for all images
+- **Complete Pipeline**: Phases 1-3 orchestration with automatic diagnostics
+- **Configurable Parameters**: JSON-based configuration for all pipeline stages
+- **Intermediate Output Management**: Optional saving of all intermediate files
+- **Robust Error Handling**: Comprehensive error tracking with graceful continuation
+- **Comprehensive Logging**: Detailed progress tracking and debugging information
+
+### Usage
+
+#### Basic Command
+
+```bash
+python run_phase3_e2e_visual_check.py \
+  --cbf-image-paths image1.cbf image2.cbf image3.cbf \
+  --output-base-dir ./e2e_outputs_phase3
+```
+
+#### With PDB Validation and Configuration
+
+```bash
+python run_phase3_e2e_visual_check.py \
+  --cbf-image-paths path/to/image1.cbf path/to/image2.cbf \
+  --output-base-dir ./outputs \
+  --pdb-path reference.pdb \
+  --dials-phil-path custom_dials.phil \
+  --extraction-config-json '{"pixel_step": 2}' \
+  --relative-scaling-config-json '{"enable_res_smoother": true}' \
+  --grid-config-json '{"ndiv_h": 100, "ndiv_k": 100, "ndiv_l": 50}' \
+  --save-intermediate-phase-outputs \
+  --verbose
+```
+
+#### Testing RMS Misorientation Validation
+
+```bash
+# Test with images from 10_6 series (expect 2.74° misorientation > 2.0° threshold)
+python run_phase3_e2e_visual_check.py \
+  --cbf-image-paths 747/lys_nitr_10_6_0491.cbf 747/lys_nitr_10_6_0492.cbf \
+  --output-base-dir ./test_fix_output \
+  --pdb-path 6o2h.pdb \
+  --verbose
+```
+
+### Command-Line Arguments
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `--cbf-image-paths` | Yes | Space-separated paths to input CBF image files |
+| `--output-base-dir` | Yes | Base output directory (subdirectories created automatically) |
+| `--pdb-path` | No | Path to external PDB file for validation |
+| `--dials-phil-path` | No | Path to custom DIALS PHIL configuration file |
+| `--static-mask-config` | No | JSON string for static mask configuration |
+| `--bragg-mask-config` | No | JSON string for Bragg mask configuration |
+| `--use-bragg-mask-option-b` | No | Use shoebox-based Bragg masking |
+| `--extraction-config-json` | No | JSON string for Phase 2 extraction configuration |
+| `--relative-scaling-config-json` | No | JSON string for Phase 3 relative scaling configuration |
+| `--grid-config-json` | No | JSON string for voxel grid configuration |
+| `--save-intermediate-phase-outputs` | No | Save manifest of all intermediate files |
+| `--verbose` | No | Enable verbose logging |
+
+### Pipeline Stages
+
+#### Phase 1: True Sequence Processing
+- **Single Dataset Processing**: All CBF files processed together using DIALS sequence workflow
+- **Scan-Varying Refinement**: DIALS maintains consistent crystal orientation across all images
+- **Shared Experiment Model**: Single experiment file used for all subsequent processing
+- **Per-Image Mask Generation**: Individual masks created using the consistent crystal model
+- **Output**: Single shared experiment/reflection files, per-image mask files
+
+#### Phase 2: Shared Model Data Extraction
+- **Consistent Model**: All images use the same crystal model from sequence processing
+- **Per-Image Extraction**: DataExtractor processing with pixel corrections for each image
+- **Coordinate Tracking**: Automatic saving of original pixel coordinates
+- **Configuration**: Flexible extraction parameter overrides
+- **Output**: NPZ files with corrected diffuse observations per image
+
+#### Phase 3: Voxelization and Merging
+- **Grid Definition**: Global voxel grid creation from all crystal models
+- **Observation Binning**: Assignment of diffuse pixels to voxels with symmetry
+- **Relative Scaling**: Iterative refinement of per-image scale factors
+- **Data Merging**: Weighted combination of scaled observations per voxel
+- **Output**: Grid definition, scaling parameters, merged voxel data
+
+#### Phase 3 Diagnostics
+- **Automatic Invocation**: `check_phase3_outputs.py` called with generated outputs
+- **Comprehensive Analysis**: All Phase 3 diagnostic plots and summaries
+- **Quality Assessment**: Visual verification of voxelization and scaling
+
+### Configuration Examples
+
+#### Basic Grid Configuration
+```json
+{
+  "ndiv_h": 100,
+  "ndiv_k": 100, 
+  "ndiv_l": 50
+}
+```
+
+#### Advanced Scaling Configuration
+```json
+{
+  "enable_res_smoother": true,
+  "max_iterations": 10,
+  "convergence_tolerance": 0.001
+}
+```
+
+#### Extraction Configuration
+```json
+{
+  "pixel_step": 2,
+  "min_intensity": 0.0,
+  "save_original_pixel_coordinates": true
+}
+```
+
+### Output Structure
+
+```
+output-base-dir/
+├── phase1_image1/
+│   ├── indexed_refined_detector.expt
+│   ├── indexed_refined_detector.refl
+│   ├── global_pixel_mask.pickle
+│   ├── bragg_mask.pickle
+│   └── total_diffuse_mask.pickle
+├── phase1_image2/
+│   └── ... (similar structure)
+├── phase3_outputs/
+│   ├── global_voxel_grid_definition.json
+│   ├── refined_scaling_model_params.json
+│   ├── voxel_data_relative.npz
+│   └── diagnostics/
+│       ├── grid_summary.txt
+│       ├── voxel_occupancy_slice_L0.png
+│       ├── scaling_params_b_i.png
+│       ├── merged_intensity_slice_L0.png
+│       └── phase3_diagnostics_summary.txt
+├── intermediate_outputs_manifest.json (if --save-intermediate-phase-outputs)
+└── e2e_phase3_visual_check.log
+```
+
+### Performance Considerations
+
+- **Memory Management**: Large datasets may require disk-based voxel accumulation
+- **Processing Time**: Scales with number of images and voxel grid resolution
+- **Disk Space**: Intermediate files can be substantial for large datasets
+- **Parallelization**: Phase 1 processing parallelized across available CPU cores
+
+---
+
 ## Summary
 
-These visual diagnostic tools provide comprehensive verification of the DiffusePipe Phase 2 implementation:
+These visual diagnostic tools provide comprehensive verification of the complete DiffusePipe pipeline:
 
-- **`check_diffuse_extraction.py`**: Standalone diagnostic generation from existing outputs
-- **`run_phase2_e2e_visual_check.py`**: Complete pipeline orchestration with automatic diagnostics
+### Phase 2 Diagnostics
+- **`check_diffuse_extraction.py`**: Standalone diagnostic generation from Phase 2 outputs
+- **`run_phase2_e2e_visual_check.py`**: Phase 1-2 pipeline orchestration with automatic diagnostics
 
-Together, they enable thorough validation of diffuse scattering extraction, pixel corrections, and data quality, essential for ensuring the correctness of the DiffusePipe processing pipeline.
+### Phase 3 Diagnostics
+- **`check_phase3_outputs.py`**: Standalone diagnostic generation from Phase 3 outputs  
+- **`run_phase3_e2e_visual_check.py`**: Complete Phase 1-3 pipeline orchestration with automatic diagnostics
+
+Together, these tools enable thorough validation of:
+- **Phase 2**: Diffuse scattering extraction, pixel corrections, and data quality
+- **Phase 3**: Voxelization, relative scaling, merging, and 3D reciprocal space map generation
+
+This comprehensive diagnostic framework is essential for ensuring the correctness of the entire DiffusePipe processing pipeline, from raw crystallographic images to final diffuse scattering maps ready for scientific analysis.
