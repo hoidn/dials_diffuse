@@ -40,8 +40,8 @@ def test_sequence_adapter():
 
         # Process the image
         print("Processing with sequence adapter...")
-        experiment, reflections, success, log_messages = adapter.process_still(
-            image_path=cbf_path, config=config
+        experiment, reflections, success, log_messages = adapter.process_sequence(
+            image_paths=[cbf_path], config=config
         )
 
         if success:
