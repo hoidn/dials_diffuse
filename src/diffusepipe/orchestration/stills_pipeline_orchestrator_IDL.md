@@ -22,19 +22,30 @@ module src.diffusepipe.orchestration {
         // Behavior:
         // - Creates `root_output_directory` if it doesn't exist.
         // - Initializes a summary log file within `root_output_directory`.
-        // - For each `cbf_path` in `cbf_image_paths`:
-        //   1. Creates a unique working subdirectory inside `root_output_directory` (e.g., named using the CBF filename).
-        //   2. Initializes a `StillProcessingOutcome` for the current image.
-        //   3. **Data Type Detection (Module 1.S.0):**
-        //      a. Determines the `processing_route` ("stills" or "sequence") based on the CBF header of `cbf_path` and `config.dials_stills_process_config.force_processing_mode`.
-        //      b. Selects the appropriate DIALS adapter (`DIALSStillsProcessAdapter` or `DIALSSequenceProcessAdapter`) based on the `processing_route`.
-        //   4. **DIALS Processing Stage (using the selected adapter):**
-        //      a. Initializes the selected DIALS adapter with the PHIL parameters derived from `config.dials_stills_process_config`.
-        //      b. The adapter imports the `cbf_path` into a DIALS `ExperimentList` (or handles equivalent for CLI).
-        //      c. The adapter invokes its main processing method. This internally handles spot finding, indexing, refinement, and integration.
-        //      d. The adapter logs relevant command-equivalent information, captures DIALS logs, and monitors for successful completion.
-        //      e. If the DIALS adapter reports failure, sets `StillProcessingOutcome.status` to "FAILURE_DIALS", records details in `dials_outcome`, logs to summary, and proceeds to the next CBF file.
-        //      f. If successful, the adapter retrieves the `integrated.expt` (containing `Crystal_i`) and `integrated.refl` (containing Bragg spots, partialities, and optionally shoeboxes) as DIALS Python objects.
+        // - **Data Type Detection and Processing Route Selection:**
+        //   1. Performs data type detection on the first image to determine `processing_route` ("stills" or "sequence") based on CBF header analysis and `config.dials_stills_process_config.force_processing_mode`.
+        //   2. If the processing route is "sequence", calls `DIALSSequenceProcessAdapter.process_sequence()` once with the entire list of images.
+        //   3. If the processing route is "stills", loops through each image, processing the first image normally and using its result as a reference for subsequent images.
+        // - **True Sequence Processing (for sequence route):**
+        //   1. Creates a single working subdirectory for the entire sequence.
+        //   2. Calls `DIALSSequenceProcessAdapter.process_sequence()` with the full list of `cbf_image_paths`.
+        //   3. The adapter processes all images as a cohesive dataset using DIALS's native scan-varying refinement, ensuring consistent crystal orientation across all frames.
+        //   4. Returns a single composite ExperimentList (with one Experiment containing the entire scan) and reflection_table (with reflections from all images).
+        //   5. Individual extraction outcomes are created for each image using the shared sequence processing results.
+        // - **Reference-Based Stills Processing (for stills route):**
+        //   1. For the first image in `cbf_image_paths`:
+        //      a. Creates a unique working subdirectory inside `root_output_directory` (e.g., named using the CBF filename).
+        //      b. Initializes a `StillProcessingOutcome` for the current image.
+        //      c. Calls `DIALSStillsProcessAdapter.process_still()` with the individual image (no reference).
+        //   2. For subsequent images:
+        //      a. Uses the successfully processed result from the first image as a reference geometry.
+        //      b. Calls `DIALSStillsProcessAdapter.process_still()` with the `base_expt_path` parameter set to the first image's experiment output.
+        //   3. **DIALS Processing Stage:**
+        //      a. Initializes the DIALS adapter with the PHIL parameters derived from `config.dials_stills_process_config`.
+        //      b. The adapter imports the `cbf_path` into a DIALS `ExperimentList`.
+        //      c. The adapter invokes its main processing method to perform spot finding, indexing, refinement, and integration.
+        //      d. If the DIALS adapter reports failure, sets `StillProcessingOutcome.status` to "FAILURE_DIALS", records details in `dials_outcome`, logs to summary, and proceeds to the next CBF file.
+        //      e. If successful, the adapter retrieves the `integrated.expt` (containing `Crystal_i`) and `integrated.refl` (containing Bragg spots, partialities, and optionally shoeboxes) as DIALS Python objects.
         //   5. **Data Extraction Stage:**
         //      a. If all DIALS steps succeeded:
         //         i. Prepares `ComponentInputFiles` (paths to `cbf_path`, `indexed_refined_detector.expt`, `indexed_refined_detector.refl`, `bragg_mask.pickle`, and `config.extraction_config.external_pdb_path` if specified in `config`).

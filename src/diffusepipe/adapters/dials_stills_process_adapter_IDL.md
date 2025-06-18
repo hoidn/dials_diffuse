@@ -24,12 +24,14 @@ module src.diffusepipe.adapters {
         // - If failed (third tuple element is False), the first two elements are None.
         // Behavior:
         // - Wraps the `dials.command_line.stills_process.Processor` Python API for processing true still images.
+        // - **Reference-Based Indexing:** If `base_expt_path` is provided, it is loaded, and its crystal models are injected into the DIALS parameters (`params.indexing.known_symmetry.crystal_models`) to constrain the indexing search.
         // - Generates appropriate PHIL parameters from the provided configuration:
         //   1. Starts with the default dials.stills_process PHIL scope.
         //   2. Merges any user-provided PHIL file specified in config.stills_process_phil_path.
         //   3. Applies configuration overrides (unit cell, space group, spotfinder settings, etc.).
-        // - Imports the CBF image (or uses provided base experiment) to create a DIALS ExperimentList.
-        // - Instantiates a Processor with the extracted PHIL parameters.
+        //   4. **Reference Constraint:** If `base_expt_path` provided, sets `params.indexing.known_symmetry.crystal_models` to reference crystal models.
+        // - Imports the CBF image to create a DIALS ExperimentList.
+        // - Instantiates a Processor with the extracted PHIL parameters (including reference crystal models if provided).
         // - Runs the Processor which internally performs: spot finding, indexing, refinement, and integration.
         // - Extracts the first experiment and its associated reflections from the Processor results.
         // - Validates that the reflection table contains the required 'partiality' column.

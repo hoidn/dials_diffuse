@@ -42,6 +42,8 @@ def __init__(self,
 6. Transform all q-vectors to fractional HKL to determine grid boundaries
 7. Store grid parameters and conversion methods
 
+**@raises_error(condition="ExcessiveMisorientation", description="Raised if the RMS misorientation between input crystal models exceeds the safety threshold (e.g., 2.0°), indicating the stills are not suitable for merging.")**
+
 **Expected Data Format:**
 ```python
 GlobalVoxelGridConfig = {
@@ -128,7 +130,10 @@ diagnostics = {
 
 **@raises_error(condition="ExcessiveCrystalVariation", message="Crystal model averaging quality poor")**
 - RMS Δhkl exceeds warning threshold
-- RMS misorientation exceeds warning threshold (logged warning, not exception)
+
+**@raises_error(condition="ExcessiveMisorientation", message="Input stills are not suitable for merging")**
+- RMS misorientation between crystal models exceeds 2.0° threshold
+- Prevents memory overload from creating excessively large voxel grids
 
 ## Implementation Notes
 
