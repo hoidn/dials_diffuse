@@ -33,6 +33,7 @@ class DataExtractor:
         inputs: ComponentInputFiles,
         config: ExtractionConfig,
         output_npz_path: str,
+        start_angle: float,
         mask_total_2d: Optional[tuple] = None,
     ) -> OperationOutcome:
         """
@@ -42,6 +43,7 @@ class DataExtractor:
             inputs: Input file paths including CBF, experiment, and PDB
             config: Extraction configuration parameters
             output_npz_path: Path for output NPZ file
+            start_angle: Start angle from CBF header to determine correct frame index
             mask_total_2d: Optional tuple of combined masks (Mask_pixel AND NOT BraggMask_2D_raw_i)
                            for each detector panel. If None, loads bragg_mask from inputs.
 
@@ -64,7 +66,7 @@ class DataExtractor:
             # 2. Load data
             logger.info("Loading input data")
             experiment, image_data, total_mask, pdb_data = self._load_data(
-                inputs, mask_total_2d
+                inputs, start_angle, mask_total_2d
             )
 
             # 3. Consistency checks (if PDB provided)
@@ -207,18 +209,89 @@ class DataExtractor:
             )
 
     def _load_data(
-        self, inputs: ComponentInputFiles, mask_total_2d: Optional[tuple] = None
+        self, inputs: ComponentInputFiles, start_angle: float, mask_total_2d: Optional[tuple] = None
     ) -> Tuple[object, np.ndarray, np.ndarray, Optional[object]]:
         """Load all required data files."""
         try:
-            # Load DIALS experiment
-            from dxtbx.model import ExperimentList
+            # Load DIALS experiment list (composite from sequence processing)
+            from dxtbx.model.experiment_list import ExperimentListFactory
 
-            experiment_list = ExperimentList.from_file(inputs.dials_expt_path)
+            experiment_list = ExperimentListFactory.from_json_file(inputs.dials_expt_path)
             if len(experiment_list) == 0:
                 raise ValueError("No experiments found in DIALS experiment file")
-            experiment = experiment_list[0]
-
+            
+            # Robust angle-based frame lookup using scan object
+            if len(experiment_list) > 1:
+                # Multiple experiments case - use the first scan to find frame index
+                base_experiment = experiment_list[0]
+                if hasattr(base_experiment, 'scan') and base_experiment.scan is not None:
+                    scan = base_experiment.scan
+                    try:
+                        # Use the scan model to find the correct frame index from the angle
+                        image_index = scan.get_image_index_from_angle(start_angle, deg=True)
+                        # Ensure the index is an integer before using it for slicing
+                        image_index = int(image_index)
+                        logger.info(f"Resolved start_angle {start_angle}° to frame index {image_index}")
+                    except (ValueError, AttributeError) as e:
+                        raise ValueError(f"Could not find frame for start_angle {start_angle}°: {e}")
+                    
+                    # Get the experiment for this frame
+                    if image_index >= len(experiment_list):
+                        raise ValueError(f"Resolved image_index {image_index} is out of bounds for ExperimentList of length {len(experiment_list)}")
+                    experiment = experiment_list[image_index]
+                    imageset = experiment.imageset
+                    # Always get the first (and only) image from the sliced imageset
+                    image_data = imageset.get_raw_data(0)
+                else:
+                    raise ValueError("Multiple experiments found but no scan object available for angle resolution")
+            else:
+                # Single experiment with scan case
+                experiment = experiment_list[0]
+                imageset = experiment.imageset
+                
+                # Use scan object to resolve frame index from angle
+                if hasattr(experiment, 'scan') and experiment.scan is not None:
+                    scan = experiment.scan
+                    try:
+                        # Use the scan model to find the correct frame index from the angle
+                        image_index = scan.get_image_index_from_angle(start_angle, deg=True)
+                        # Ensure the index is an integer before using it for slicing
+                        image_index = int(image_index)
+                        logger.info(f"Resolved start_angle {start_angle}° to frame index {image_index}")
+                    except (ValueError, AttributeError) as e:
+                        raise ValueError(f"Could not find frame for start_angle {start_angle}°: {e}")
+                    
+                    # For sequence processing, get the geometry at the specific scan point
+                    if hasattr(experiment.crystal, 'get_crystal_at_scan_point'):
+                        # Get scan-varying crystal model
+                        scan_point = image_index
+                        crystal_at_scan_point = experiment.crystal.get_crystal_at_scan_point(scan_point)
+                        # Create a new experiment with the frame-specific crystal
+                        experiment = experiment_list[0]  # Keep other models the same
+                        experiment.crystal = crystal_at_scan_point
+                    
+                    # Get the image data for the specific image
+                    if image_index >= len(imageset):
+                        # Fallback: use the specific CBF file directly
+                        from dxtbx.imageset import ImageSetFactory
+                        imagesets = ImageSetFactory.new([inputs.cbf_image_path])
+                        if not imagesets:
+                            raise ValueError(f"Failed to load image from {inputs.cbf_image_path}")
+                        fallback_imageset = imagesets[0]
+                        image_data = fallback_imageset.get_raw_data(0)
+                    else:
+                        # Get the image data for the specific frame from the full imageset
+                        image_data = imageset.get_raw_data(image_index)
+                else:
+                    # No scan object - treat as still image
+                    logger.info(f"No scan object found, loading image directly from CBF")
+                    from dxtbx.imageset import ImageSetFactory
+                    imagesets = ImageSetFactory.new([inputs.cbf_image_path])
+                    if not imagesets:
+                        raise ValueError(f"Failed to load image from {inputs.cbf_image_path}")
+                    fallback_imageset = imagesets[0]
+                    image_data = fallback_imageset.get_raw_data(0)
+            
             # Validate experiment has required models
             if experiment.beam is None:
                 raise ValueError("DIALS experiment missing beam model")
@@ -226,15 +299,6 @@ class DataExtractor:
                 raise ValueError("DIALS experiment missing detector model")
             if experiment.crystal is None:
                 raise ValueError("DIALS experiment missing crystal model")
-
-            # Load image data
-            from dxtbx.imageset import ImageSetFactory
-
-            imagesets = ImageSetFactory.new([inputs.cbf_image_path])
-            if not imagesets:
-                raise ValueError(f"Failed to load image from {inputs.cbf_image_path}")
-            imageset = imagesets[0]
-            image_data = imageset.get_raw_data(0)  # Get first (and only) image
 
             # Convert to numpy array if needed
             if isinstance(image_data, tuple):

@@ -395,28 +395,65 @@ def generate_grid_summary(grid_def: Dict[str, Any], voxel_data: Dict[str, np.nda
     h_center = voxel_data["H_center"]
     k_center = voxel_data["K_center"]
     l_center = voxel_data["L_center"]
+    intensities = voxel_data["I_merged_relative"]
+    
+    # Filter for positive intensities to avoid issues with log scale
+    positive_mask = intensities > 0
+    h_positive = h_center[positive_mask]
+    k_positive = k_center[positive_mask]
+    l_positive = l_center[positive_mask]
+    intensities_positive = intensities[positive_mask]
     
     # Implement sampling if there are too many points
-    n_voxels = len(h_center)
-    if n_voxels > max_plot_points:
-        # Randomly sample max_plot_points indices
-        sample_indices = np.random.choice(n_voxels, max_plot_points, replace=False)
-        sample_h = h_center[sample_indices]
-        sample_k = k_center[sample_indices]
-        sample_l = l_center[sample_indices]
+    n_voxels_positive = len(h_positive)
+    if n_voxels_positive > max_plot_points:
+        # Randomly sample max_plot_points indices from positive intensity voxels
+        sample_indices = np.random.choice(n_voxels_positive, max_plot_points, replace=False)
+        sample_h = h_positive[sample_indices]
+        sample_k = k_positive[sample_indices]
+        sample_l = l_positive[sample_indices]
+        sample_intensities = intensities_positive[sample_indices]
     else:
-        sample_h = h_center
-        sample_k = k_center
-        sample_l = l_center
+        sample_h = h_positive
+        sample_k = k_positive
+        sample_l = l_positive
+        sample_intensities = intensities_positive
     
     if len(sample_h) > 0:
-        ax.scatter(sample_h, sample_k, sample_l, c="red", s=1, alpha=0.3)
+        from matplotlib.colors import LogNorm
+        
+        # Calculate robust color limits to prevent outliers from dominating the scale
+        positive_intensities = intensities[positive_mask]
+        if len(positive_intensities) > 1:
+            vmin = np.percentile(positive_intensities, 5)
+            vmax = np.percentile(positive_intensities, 99)
+        else:
+            vmin = np.min(positive_intensities) if len(positive_intensities) > 0 else 1e-6
+            vmax = np.max(positive_intensities) if len(positive_intensities) > 0 else 1.0
+        
+        # Add a small epsilon to vmin to avoid issues with log scale if it's zero
+        vmin = max(vmin, 1e-12)
+        
+        # Create scatter plot with intensity-based color and size
+        max_intensity = np.max(sample_intensities)
+        plot = ax.scatter(
+            sample_h, sample_k, sample_l,
+            c=sample_intensities,  # Color by intensity
+            s=(sample_intensities / max_intensity) * 20,  # Size by intensity (scaled to max 20)
+            cmap='viridis',  # Good colormap for intensity data
+            norm=LogNorm(vmin=vmin, vmax=vmax),  # Use robust limits for logarithmic scale
+            alpha=0.6,  # Transparency to see through the cloud
+            edgecolors='none'  # Cleaner look
+        )
+        
+        # Add a color bar to explain the intensity scale
+        fig.colorbar(plot, ax=ax, label='Merged Intensity (Log Scale)', shrink=0.8)
 
     ax.set_xlabel("H (Fractional)")
     ax.set_ylabel("K (Fractional)")
     ax.set_zlabel("L (Fractional)")
     ax.set_title(
-        "Global Voxel Grid Data Visualization\n(Blue wireframe shows HKL bounds, red points show actual voxel data)"
+        "Global Voxel Grid - Merged Intensities\n(Blue wireframe shows HKL bounds, colored points show voxel intensities)"
     )
 
     # Save data visualization plot

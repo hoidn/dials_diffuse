@@ -78,6 +78,7 @@ try:
         create_default_bragg_mask_config,
     )
     from diffusepipe.extraction.data_extractor import DataExtractor
+    from diffusepipe.utils.cbf_utils import CBFUtils
 
     # Phase 3 component imports
     from diffusepipe.voxelization.global_voxel_grid import (
@@ -577,6 +578,7 @@ def _run_data_extraction_for_image(
     image_output_dir: Path,
     composite_expt_file: Path,
     total_diffuse_mask_path: Path,
+    start_angle: float,
 ) -> Dict[str, Any]:
     """
     Run Phase 2 data extraction for a single image using the shared experiment model.
@@ -587,6 +589,7 @@ def _run_data_extraction_for_image(
         image_output_dir: Output directory for this specific image
         composite_expt_file: Path to the shared experiment file from sequence processing
         total_diffuse_mask_path: Path to the total diffuse mask for this image
+        start_angle: Start angle from CBF header to determine correct frame index
 
     Returns:
         Dictionary with Phase 2 results for this image
@@ -626,6 +629,7 @@ def _run_data_extraction_for_image(
             inputs=component_inputs,
             config=extraction_config,
             output_npz_path=str(output_npz_path),
+            start_angle=start_angle,
         )
 
         # Check outcome
@@ -1143,8 +1147,18 @@ def main():
 
         # Phase 2: Data Extraction (Per-Image with Shared Model)
         phase2_results = []
+        cbf_utils = CBFUtils()
+        
         for i, cbf_path in enumerate(args.cbf_image_paths):
             mask_info = per_image_masks[i]
+            
+            # Parse Start_angle from CBF header for robust frame index lookup
+            start_angle = cbf_utils.get_start_angle(cbf_path)
+            if start_angle is None:
+                logger.error(f"Could not determine Start_angle for {cbf_path}")
+                raise RuntimeError(f"Failed to parse Start_angle from CBF header: {cbf_path}")
+            
+            logger.info(f"Processing CBF {Path(cbf_path).name} with Start_angle: {start_angle}°")
 
             # Extract data for this image using the shared experiment model
             phase2_result = _run_data_extraction_for_image(
@@ -1153,6 +1167,7 @@ def main():
                 image_output_dir=mask_info["image_output_dir"],
                 composite_expt_file=composite_expt_path,
                 total_diffuse_mask_path=mask_info["total_diffuse_mask_path"],
+                start_angle=start_angle,
             )
 
             # Add mask information to the result

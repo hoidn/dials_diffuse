@@ -11,6 +11,7 @@ module src.diffusepipe.extraction {
         // Preconditions:
         // - `inputs.cbf_image_path` must point to an existing, readable CBF image file.
         // - `inputs.dials_expt_path` must point to an existing, readable DIALS experiment list JSON file.
+        // - `start_angle` must be a valid angle that corresponds to a frame in the DIALS scan (for sequence data).
         // - If `mask_total_2d` is not provided, `inputs.bragg_mask_path` must point to an existing, readable pickle file containing the Bragg mask.
         // - If `mask_total_2d` is provided, it must be a tuple of boolean arrays (one per detector panel) representing the combined mask (Mask_pixel AND NOT BraggMask_2D_raw_i).
         // - If `inputs.external_pdb_path` is provided, it must be an existing, readable PDB file.
@@ -24,10 +25,12 @@ module src.diffusepipe.extraction {
         // Behavior:
         // 1. Logs verbose messages if `config.verbose` is true.
         // 2. **Load Data:**
-        //    a. Parses `inputs.dials_expt_path` using dxtbx to obtain the DIALS `Experiment` object (containing beam, detector, crystal models).
-        //    b. Reads the raw pixel data from `inputs.cbf_image_path`.
-        //    c. Loads the Bragg mask (boolean NumPy array) from `inputs.bragg_mask_path`.
-        //    d. If `inputs.external_pdb_path` is provided, parses it to extract reference unit cell parameters and potentially orientation information.
+        //    a. Parses `inputs.dials_expt_path` using dxtbx to obtain the DIALS `ExperimentList` object from sequence processing.
+        //    b. Uses the scan object's `get_image_index_from_angle(start_angle)` method to determine the correct frame index for this specific image.
+        //    c. Selects the frame-specific experiment using the resolved frame index and gets scan-varying geometry if needed.
+        //    d. Gets the corresponding imageset directly from the experiment object and reads raw pixel data for the correct frame.
+        //    e. Loads the Bragg mask (boolean NumPy array) from `inputs.bragg_mask_path`.
+        //    f. If `inputs.external_pdb_path` is provided, parses it to extract reference unit cell parameters and potentially orientation information.
         // 3. **Consistency Checks (if `inputs.external_pdb_path` provided):**
         //    a. Compares unit cell parameters (lengths and angles) from the DIALS crystal model against the reference PDB, using `config.cell_length_tol` and `config.cell_angle_tol`.
         //    b. Compares crystal orientation from the DIALS crystal model against the reference PDB, using `config.orient_tolerance_deg`.
@@ -67,6 +70,7 @@ module src.diffusepipe.extraction {
             src.diffusepipe.types.ComponentInputFiles inputs,
             src.diffusepipe.types.ExtractionConfig config,
             string output_npz_path,
+            float start_angle,
             optional tuple mask_total_2d
         );
     }

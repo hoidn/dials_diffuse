@@ -30,6 +30,18 @@ class CBFUtils:
         """
         return get_angle_increment_from_cbf(image_path)
 
+    def get_start_angle(self, image_path: str) -> Optional[float]:
+        """
+        Extract the Start_angle value from a CBF file header.
+
+        Args:
+            image_path: Path to the CBF file
+
+        Returns:
+            Start angle in degrees, or None if not found
+        """
+        return get_start_angle_from_cbf(image_path)
+
 
 def get_angle_increment_from_cbf(image_path: str) -> Optional[float]:
     """
@@ -201,4 +213,173 @@ def _parse_cbf_header_text(image_path: str) -> Optional[float]:
         raise
 
     logger.debug("Angle_increment not found in header text")
+    return None
+
+
+def get_start_angle_from_cbf(image_path: str) -> Optional[float]:
+    """
+    Extract the Start_angle value from a CBF file header.
+
+    Uses a two-phase approach similar to get_angle_increment_from_cbf:
+    1. Primary: dxtbx.load() to get scan information (robust for most files)
+    2. Fallback: Direct header text parsing with regex (handles edge cases)
+
+    Args:
+        image_path: Path to the CBF file
+
+    Returns:
+        Start angle in degrees, or None if not found/determinable
+
+    Raises:
+        Exception: If file cannot be read or both parsing methods fail critically
+    """
+    try:
+        # First attempt: Use dxtbx to get scan information
+        import dxtbx
+
+        logger.debug(f"Attempting to parse CBF Start_angle for: {image_path}")
+
+        # Load the image using dxtbx
+        image = dxtbx.load(image_path)
+
+        # Try to get scan information
+        try:
+            scan = image.get_scan()
+        except AttributeError:
+            logger.debug("Image object has no get_scan() method, no start angle for still")
+            return None
+
+        if scan is not None:
+            try:
+                # Get oscillation information: (start_angle, oscillation_width)
+                oscillation = scan.get_oscillation()
+                if oscillation is None or len(oscillation) < 1:
+                    logger.debug(
+                        "Scan object returned None or incomplete oscillation data"
+                    )
+                    return None
+                start_angle = oscillation[0]  # start angle
+                logger.info(
+                    f"Start angle from dxtbx scan object: {start_angle}°"
+                )
+                return start_angle
+            except (AttributeError, IndexError, TypeError) as e:
+                logger.debug(f"Failed to get oscillation from scan object: {e}")
+                return None
+        else:
+            logger.debug("No scan object found, likely a still image")
+            return None
+
+    except ImportError:
+        logger.warning(
+            f"dxtbx not available, falling back to text parsing for {image_path}"
+        )
+    except Exception as e:
+        logger.warning(f"dxtbx method failed for {image_path}: {e}")
+
+        # Fallback: Parse CBF header text directly
+        try:
+            fallback_result = _parse_start_angle_header_text(image_path)
+            if fallback_result is not None:
+                logger.info(
+                    f"Start angle from header text parsing: {fallback_result}°"
+                )
+                return fallback_result
+            else:
+                logger.warning(
+                    f"Could not determine Start_angle for {image_path}."
+                )
+                return None
+        except Exception as fallback_error:
+            logger.error(
+                f"All parsing methods failed for {image_path}: {fallback_error}"
+            )
+            raise
+
+
+def _parse_start_angle_header_text(image_path: str) -> Optional[float]:
+    """
+    Fallback method to parse CBF header text directly for Start_angle.
+
+    Uses regex for flexible parsing of the Start_angle line with
+    case-insensitive matching and variable spacing.
+
+    Args:
+        image_path: Path to the CBF file
+
+    Returns:
+        Start angle in degrees, or None if not found
+    """
+    import re
+
+    logger.debug(f"Attempting direct Start_angle header parsing for: {image_path}")
+
+    # Regex pattern for flexible Start_angle parsing
+    # Matches: # (optional spaces) Start_angle (spaces) number (optional spaces) (optional deg.)
+    start_angle_pattern = re.compile(
+        r"^\s*#\s*Start_angle\s+([+-]?\d*\.?\d+)\s*(?:deg\.?)?", re.IGNORECASE
+    )
+
+    try:
+        with open(image_path, "r", encoding="utf-8", errors="ignore") as f:
+            # Read in chunks to handle large files efficiently
+            # Headers are typically in the first 16KB
+            chunk_size = 16384
+            content = f.read(chunk_size)
+
+            # Split into lines for processing
+            for line in content.split("\n"):
+                # Stop when we hit the binary data section
+                if (
+                    "_array_data.data" in line
+                    or "Content-Type: application/octet-stream" in line
+                ):
+                    break
+
+                # Try to match the Start_angle pattern
+                match = start_angle_pattern.match(line.strip())
+                if match:
+                    try:
+                        start_angle = float(match.group(1))
+                        logger.debug(
+                            f"Found start angle from header text: {start_angle}°"
+                        )
+                        return start_angle
+                    except ValueError as e:
+                        logger.warning(
+                            f"Could not convert start angle '{match.group(1)}' to float: {e}"
+                        )
+                        continue
+
+            # If we haven't found it in the first chunk and there's more to read, read another chunk
+            if len(content) == chunk_size:
+                additional_content = f.read(chunk_size)
+                for line in additional_content.split("\n"):
+                    if (
+                        "_array_data.data" in line
+                        or "Content-Type: application/octet-stream" in line
+                    ):
+                        break
+                    match = start_angle_pattern.match(line.strip())
+                    if match:
+                        try:
+                            start_angle = float(match.group(1))
+                            logger.debug(
+                                f"Found start angle from header text: {start_angle}°"
+                            )
+                            return start_angle
+                        except ValueError as e:
+                            logger.warning(
+                                f"Could not convert start angle '{match.group(1)}' to float: {e}"
+                            )
+                            continue
+
+    except IOError as e:
+        logger.error(f"Failed to read CBF file {image_path}: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error parsing CBF header for {image_path}: {e}")
+        raise
+
+    logger.debug("Start_angle not found in header text")
     return None
