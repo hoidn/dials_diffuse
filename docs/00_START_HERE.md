@@ -46,7 +46,9 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
 3.  **Understand Contract & Interactions:** Thoroughly read the IDL: purpose, dependencies, function/method signatures, and especially the documentation blocks (`Preconditions`, `Postconditions`, `Behavior`, `Expected Data Format`, error conditions). Look for any "Component Interactions" section. Pay close attention to dependency declarations.
 4.  **Review Rules:** Briefly refresh understanding of key guidelines in `02_IMPLEMENTATION_RULES.md` (especially Testing) and `03_PROJECT_RULES.md`.
 5.  **Outline Testing Strategy:** Based on the IDL dependencies and testing guidelines, outline the primary testing approach.
-6.  **Setup Working Memory:** Update your working memory log (e.g., `TEMPLATES/WORKING_MEMORY_LOG_TEMPLATE.md`) with your "Current Task/Focus", initial "Testing Strategy Outline", and initial "Next Steps".
+6.  **Setup Working Memory & Checklist:**
+    - Update your working memory log (e.g., `docs/TEMPLATES/WORKING_MEMORY_LOG.md`) with your "Current Task/Focus" and high-level strategy.
+    - **Create an Implementation Checklist:** This is a critical step. For any non-trivial task, create a detailed checklist based on the template and guidelines in `agent/writing_checklists.md`. This checklist will serve as your primary plan for implementing and verifying the task against its IDL contract.
 
 **Phase 1: Implementation & Testing ("Main Step")**
 
@@ -85,6 +87,11 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
 *   **Imports:** Use **absolute imports** from `src` (or your project's source root). Group imports correctly. Top-level only unless exceptional reason exists (document it).
 *   **Naming:** PEP 8 (snake_case for functions/variables, CamelCase for classes). Use descriptive names.
 *   **Logging:** Use the standard `logging` module. Configure logging early in entry-point scripts as detailed in `02_IMPLEMENTATION_RULES.md`.
+*   **Performance Standards:**
+    *   **Vectorization-First:** All array operations must use NumPy vectorization unless explicitly justified
+    *   **Performance Tests:** Computational methods must include performance benchmarks
+    *   **Matrix Operations:** Always prefer matrix multiplication over element-wise loops
+    *   **Code Review:** All array processing code reviewed for vectorization opportunities
 
 > **Further Reading:** See `02_IMPLEMENTATION_RULES.md` and `03_PROJECT_RULES.md` for complete details.
 
@@ -204,7 +211,7 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
 
 *   **Follow the IDL Specification:** Adhere strictly to the IDL for the component.
 *   **Plan Your Tests:** Consider testing strategy *before* implementation.
-*   **Use Working Memory:** Maintain a log of your progress (see `TEMPLATES/WORKING_MEMORY_LOG_TEMPLATE.md`).
+*   **Use Working Memory:** Maintain a log of your progress (see `docs/TEMPLATES/WORKING_MEMORY_LOG.md`).
 *   **Be Aware of Existing Code & Configuration:** Consider impacts on related code and config files.
 *   **Test Driven (where practical):** Write tests to verify against the IDL contract.
 *   **Commit Often:** Small, logical commits with clear messages.

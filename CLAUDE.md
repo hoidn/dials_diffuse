@@ -121,11 +121,12 @@ llm -m gemini-2.5-pro-preview-06-05 <  prompt.txt > context_package.json
 bash adaptive_substitute.sh context_package.json 10000 expanded_context.txt
 
 ## Development Process
-1. Review IDL specification for the component to be modified
-2. Implement changes following the IDL contract
-3. Add integration tests with real components (minimize mocks)
-4. Format code (Black) and run linter (Ruff)
-5. Verify changes work with the pipeline script
+1. **Understand the Task and Review Specifications:** Read the planned task, high-level plans (plan.md), and all relevant IDL files (*_IDL.md).
+2. **Create/Update an Implementation Checklist:** Before writing any code, prepare a detailed checklist based on the template in `agent/writing_checklists.md`. This is your primary plan of action and must be followed.
+3. **Implement and Test Incrementally:** Follow the checklist to implement changes and corresponding tests.
+4. **Format and Lint:** Use make format and make lint or equivalent.
+5. **Final Verification:** Perform final sanity checks and run the full test suite as outlined in your checklist.
+6. **Update Documentation:** If the IDL contract changed, update the *_IDL.md file.
 
 ## Debugging the Pipeline
 

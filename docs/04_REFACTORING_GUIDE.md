@@ -177,7 +177,19 @@ This workflow details the execution steps once a refactoring is planned:
 *   **Forgetting Cleanup:** Leaving unused imports, variables, or methods.
     *   **Avoidance:** Explicitly review for dead code. Use linters.
 
-**8. Example (Conceptual: Extracting a Helper Function)**
+**8. Safe Refactoring Process**
+
+To mitigate risks during refactoring, adhere to the following process:
+
+**Plan with a Checklist:** For any significant refactoring, create a detailed implementation checklist based on the template in `agent/writing_checklists.md`. This forces you to plan each step, from code changes to test updates and documentation verification.
+
+**Work in Small, Verifiable Increments:** As outlined in your checklist, make small changes and run tests frequently.
+
+**Commit Often:** Create a save point after each successful step in your checklist.
+
+The checklist approach transforms potentially risky refactoring into a systematic, verifiable process that maintains code quality while reducing the risk of introducing bugs or breaking existing functionality.
+
+**9. Example (Conceptual: Extracting a Helper Function)**
 
 1.  **Identify:** A complex calculation is repeated within a method `process_data`.
 2.  **Test (Before):** Ensure `test_process_data` covers cases involving this calculation.

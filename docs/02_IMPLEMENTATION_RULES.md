@@ -82,6 +82,12 @@ This document outlines the standard conventions, patterns, and rules for impleme
 
 **5.1 Performance Optimization Strategies**
 
+**Mandatory Vectorization Policy:**
+*   **Vectorization-First Development:** All array operations involving >100 elements MUST use vectorized approaches unless explicitly justified in code comments.
+*   **Performance Review Requirement:** Any Python loop processing NumPy arrays requires justification and performance comparison with vectorized alternatives.
+*   **Matrix Operation Standards:** Always prefer matrix multiplication over element-wise loops for linear algebra operations.
+*   **External Library Integration:** Convert external library matrices (e.g., scitbx) to NumPy arrays for vectorization opportunities.
+
 **Vectorization Success Patterns:**
 *   **Vectorize by Default:** When in doubt, prefer vectorized implementations. Only use iterative approaches during initial prototyping or for very complex non-standard operations.
 *   **Batch Processing:** Process coordinates, q-vectors, and corrections as arrays rather than individual elements. Group operations that can be parallelized.
@@ -89,6 +95,7 @@ This document outlines the standard conventions, patterns, and rules for impleme
 *   **Algorithmic Validation:** Test vectorized implementations against known reference results or simplified test cases to ensure correctness.
 
 **Performance Measurement Framework:**
+*   **Mandatory Performance Tests:** All computational methods processing arrays must include performance benchmarks in their test suite.
 *   **Structured Testing:** Document speedups with before/after timing measurements using consistent test conditions.
 *   **Realistic Data Sizes:** Test with actual detector geometries and data volumes representative of production use.
 *   **Performance Characterization:** Document specific improvements with quantified metrics (e.g., "2.4x speedup: 4.0s → 1.7s").
@@ -96,17 +103,30 @@ This document outlines the standard conventions, patterns, and rules for impleme
 
 **Example Vectorization Pattern:**
 ```python
-# Before: Python loop (slower)
+# ANTI-PATTERN: Python loop processing arrays (requires justification)
 result = []
 for x, y in zip(list_a, list_b):
     result.append(complex_calculation(x, y))
 
-# After: Vectorized operation (faster)
+# CORRECT: Vectorized operation (10x+ faster for large arrays)
 array_a = np.array(list_a)
 array_b = np.array(list_b)
 result_array = vectorized_complex_calculation(array_a, array_b)
 
-# Verification: Prove equivalence (critical)
+# CRITICAL: Matrix operations with external libraries
+# ANTI-PATTERN: Loop-based transformation
+hkl_fractional = []
+for q_vec in combined_q_vectors:
+    q_matrix = matrix.col(q_vec)
+    hkl_frac = A_inv * q_matrix
+    hkl_fractional.append(hkl_frac.elems)
+hkl_array = np.array(hkl_fractional)
+
+# CORRECT: Vectorized matrix multiplication
+A_inv_np = np.array(A_inv.elems).reshape(3, 3)
+hkl_array = (A_inv_np @ combined_q_vectors.T).T
+
+# MANDATORY: Prove equivalence
 assert np.allclose(result, result_array, rtol=1e-15)
 ```
 
@@ -116,6 +136,7 @@ assert np.allclose(result, result_array, rtol=1e-15)
 *   **Validate Results:** Ensure vectorized code produces correct results using reference data or simplified test cases
 *   **Document Benefits:** Record specific performance improvements achieved
 *   **Test Edge Cases:** Verify optimizations work correctly with boundary conditions
+*   **Code Review Checklist:** All array processing code must be reviewed for vectorization opportunities
 
 **5.2 Scientific Accuracy Implementation Guidelines**
 
@@ -218,6 +239,38 @@ def calculate_air_attenuation(wavelength_angstrom, path_length_mm,
     *   **Core Principle:** Integration tests with real components should be the foundation of your testing strategy. Test components together as they would operate in production to verify their interactions fulfill IDL contracts.
     *   **Real-World Scenarios:** Design tests around realistic workflows that exercise multiple components working together.
     *   **No Mock Chains:** Never use chains of mocks where one mock returns another mock. This creates tests that pass but don't validate actual behavior.
+
+*   **Mandatory Performance Testing:**
+    *   **Computational Method Coverage:** All methods processing arrays or performing matrix operations MUST include performance tests.
+    *   **Vectorization Verification:** Include tests comparing vectorized implementations against loop-based reference implementations for correctness.
+    *   **Performance Benchmarks:** Record baseline performance metrics that will catch significant regressions.
+    *   **Implementation Comparison:** When multiple implementation approaches exist, include tests comparing their performance.
+    *   **Example Performance Test Pattern:**
+    ```python
+    def test_hkl_transformation_performance(self):
+        """Test that vectorized transformation is significantly faster than loop-based."""
+        import time
+        # Create large test dataset
+        n_vectors = 100000
+        test_q_vectors = np.random.uniform(-2.0, 2.0, (n_vectors, 3))
+        
+        # Time loop-based approach (on subset)
+        start = time.perf_counter()
+        loop_result = loop_based_transformation(test_q_vectors[:1000])
+        loop_time = time.perf_counter() - start
+        
+        # Time vectorized approach (full dataset)
+        start = time.perf_counter()
+        vectorized_result = vectorized_transformation(test_q_vectors)
+        vectorized_time = time.perf_counter() - start
+        
+        # Assert significant speedup
+        assert (loop_time * 100) / vectorized_time > 5  # At least 5x faster
+        
+        # Verify correctness
+        subset_vectorized = vectorized_transformation(test_q_vectors[:1000])
+        assert np.allclose(loop_result, subset_vectorized, rtol=1e-10)
+    ```
 
 *   **Avoiding Mocks - Preferred Alternatives:**
     *   **Use Real Components:** Whenever possible, instantiate and use actual component implementations in tests rather than mocks.
@@ -430,3 +483,22 @@ real_detector_data = flex.bool(flex.grid(height, width), True)
 *   **Naming Constraints:** If registering callables (tools, plugins, services) that will be exposed to external systems (e.g., LLMs, other APIs), ensure their names conform to any constraints imposed by those external systems (e.g., regex for valid characters, length limits).
 *   **Lookup and Invocation:** The key used for registration is typically the identifier used for lookup and invocation.
 *   **Recommendation:** Prefer names valid for both internal use and external exposure to avoid complex mapping layers.
+
+**17. Standard Development Process**
+
+To ensure that the implementation rules outlined in this document are consistently applied, all significant development and refactoring tasks must follow a structured planning and execution process.
+
+The standard tool for managing this process is the **Implementation Checklist**. Before beginning implementation, a checklist must be created that details the plan, from understanding the IDL contract to final verification.
+
+All developers and agents must refer to the official guide for creating these checklists:
+
+**`agent/writing_checklists.md`**
+
+This guide provides templates and detailed instructions for creating task-specific checklists that ensure:
+- IDL contract compliance
+- Proper testing strategy
+- Incremental implementation with verification points
+- Documentation updates
+- Code quality standards adherence
+
+Using implementation checklists transforms ad-hoc development into a systematic, verifiable process that maintains high code quality and reduces the risk of overlooking critical requirements.
