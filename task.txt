@@ -1,5 +1,11 @@
-We will be:
-- reviewing the scaling approach specified in plan.md
-- revieing the idls for consistency and correctness wrt to the scaling approach
-- reviewing the code implementation for consistency and correctness wrt to the scaling approach 
-- analyzing any issues identified in the above and proposing fixes
+when running python scripts/dev_workflows/run_phase3_e2e_visual_check.py   --cbf-image-paths $(for i in $(seq -f "%04g" 1 10); do echo 747/lys_nitr_10_1_$i.cbf; done)   --output-base-dir ./test_fix_output_20_images   --pdb-path 6o2h.pdb   --verbose
+
+or any similar command, we get exactly 6224001 pixels per image:
+
+2025-06-18 11:18:42,400 - diffusepipe.voxelization.voxel_accumulator - DEBUG - Adding 6224001 observations from still 1768
+
+etc. 
+
+which can't be right bc the bragg mask should be different for each frame. 
+
+find the root cause and propose a fix.

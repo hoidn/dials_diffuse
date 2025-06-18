@@ -21,6 +21,9 @@ module src.diffusepipe.adapters {
         // - The ExperimentList contains one Experiment with a scan object covering all images in the sequence.
         // - The Experiment contains a single, consistent, scan-varying crystal model that maintains orientation consistency across all frames.
         // - The reflection_table contains integrated reflections from all images with a 'partiality' column.
+        // - **Note on Filtering:** To select reflections for a specific frame `i` (0-indexed) from the returned table,
+        //   filter on the `z` coordinate of the `xyzobs.px.value` column (e.g., `table.select(table['xyzobs.px.value'].parts()[2].iround() == i)`).
+        //   The `imageset_id` column will be 0 for all reflections.
         // - The fourth tuple element contains human-readable log messages detailing the processing steps.
         // - If failed (third tuple element is False), the first two elements are None.
         // - All temporary files are cleaned up after processing (temporary directory is removed).

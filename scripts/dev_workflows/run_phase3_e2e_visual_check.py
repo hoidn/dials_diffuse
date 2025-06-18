@@ -416,17 +416,23 @@ def run_phase1_sequence_processing(
             image_output_dir = output_dir / f"still_{i:03d}_{cbf_path_obj.stem}"
             image_output_dir.mkdir(parents=True, exist_ok=True)
 
-            # Filter reflections for this specific image
-            image_reflections = all_reflections.select(
-                all_reflections["imageset_id"] == i
-            )
+            # Filter reflections for this specific image using Z-coordinate of xyzobs.px.value
+            # For sequence processing, frame index is stored in Z component, not imageset_id
+            # The Z-coordinate uses 0-based indexing matching the loop index 'i'
+            z_coords = all_reflections["xyzobs.px.value"].parts()[2]
+            image_reflections = all_reflections.select(z_coords.iround() == i)
+            
+            # Log the number of reflections found
+            if len(image_reflections) == 0:
+                logger.warning(
+                    f"No reflections found for image index {i} ({Path(cbf_path).name}). "
+                    f"This may indicate an issue with reflection filtering."
+                )
+            else:
+                logger.info(f"Found {len(image_reflections)} reflections for image index {i}.")
 
-            # Get the experiment for this image (should be same crystal model for all)
-            experiment = (
-                experiments_list[i]
-                if i < len(experiments_list)
-                else experiments_list[0]
-            )
+            # Get the experiment (single scan-varying model for all frames in true sequence processing)
+            experiment = experiments_list[0]
 
             # Generate Bragg mask for this image
             if args.use_bragg_mask_option_b:
