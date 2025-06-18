@@ -263,8 +263,8 @@ class GlobalVoxelGrid:
         hkl_min_frac = np.min(filtered_hkl, axis=0)
         hkl_max_frac = np.max(filtered_hkl, axis=0)
 
-        # Convert to integer boundaries with subdivision buffer
-        buffer = 1  # Buffer for grid edges
+        # Convert to subdivision coordinate boundaries with buffer
+        buffer = 1
         ndiv_list = [self.config.ndiv_h, self.config.ndiv_k, self.config.ndiv_l]
         self.hkl_min = tuple(
             int(np.floor(hkl_min_frac[i] * ndiv_list[i]) - buffer) for i in range(3)

@@ -93,7 +93,7 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
     *   **Matrix Operations:** Always prefer matrix multiplication over element-wise loops
     *   **Code Review:** All array processing code reviewed for vectorization opportunities
 
-> **Further Reading:** See `02_IMPLEMENTATION_RULES.md` and `03_PROJECT_RULES.md` for complete details.
+> **Further Reading:** See `02_IMPLEMENTATION_RULES.md` and `03_PROJECT_RULES.md` for complete details. For historical context and detailed case studies of these practices, see `LESSONS_LEARNED.md`.
 
 **5. Important Patterns & Principles**
 

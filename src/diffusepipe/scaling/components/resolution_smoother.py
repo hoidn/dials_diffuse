@@ -60,11 +60,8 @@ class ResolutionSmootherComponent(ScaleComponentBase):
         self.q_max = q_max
         self.q_range = (q_min, q_max)
 
-        # Create 1D Gaussian smoother
-        self._smoother = GaussianSmoother1D(
-            x_range=self.q_range,
-            num_intervals=n_control_points - 1  # num_intervals is one less than control points
-        )
+        # Create 1D Gaussian smoother using correct DIALS API
+        self._smoother = GaussianSmoother1D(self.q_range, self._n_control_points)
 
         # Store parameters array
         self._parameters = initial_parameters
@@ -117,33 +114,49 @@ class ResolutionSmootherComponent(ScaleComponentBase):
             q_clamp = max(self.q_min, min(self.q_max, q))
             q_clamped.append(q_clamp)
 
-        # Get interpolated scales using DIALS GaussianSmoother1D
-        # Note: The actual API may differ from documentation - using direct value calculation
-        scales = flex.double()
-        derivatives = flex.double()
+        # Extract q-magnitudes and convert to flex.double array
+        q_locations = q_clamped
         
-        # For each q-value, evaluate the smoother and get derivatives
-        for i, q in enumerate(q_clamped):
-            # Use the GaussianSmoother1D to get value and weight vector
-            # The weight vector provides the derivatives
+        # Set the parameters on the smoother
+        try:
+            # Method 1: Use set_parameters if available
+            self._smoother.set_parameters(self.parameters)
+            
+            # Call value_weight to get scales and derivatives
+            value_weight_results = self._smoother.value_weight(q_locations)
+            
+            # Extract scales and derivatives from results
+            scales = value_weight_results.value
+            derivatives = value_weight_results.weight
+            
+        except (AttributeError, TypeError) as e:
+            logger.warning(f"DIALS set_parameters/value_weight API unavailable ({e}), trying alternative")
             try:
-                # Try to get both value and weights (derivatives)
-                value = self._smoother.value(q, self.parameters)
-                weight_vector = self._smoother.weight(q)
-                
-                scales.append(value)
-                
-                # Store derivatives for this observation (flatten for this single q-value)
-                for j in range(len(weight_vector)):
-                    derivatives.append(weight_vector[j])
+                # Method 2: Try alternative API pattern from DIALS source
+                values, weights, _ = self._smoother.multi_value_weight(q_locations, self.parameters)
+                scales = values
+                derivatives = weights
                     
-            except (AttributeError, TypeError) as e:
-                # Fallback: use linear interpolation if DIALS API is different
-                logger.warning(f"DIALS smoother API unavailable ({e}), using fallback")
-                # Simple fallback - just use the parameters directly
-                scales.append(1.0)  # Default scale
-                for j in range(self.n_params):
-                    derivatives.append(0.0 if j != 0 else 1.0)  # Simple derivative
+            except (AttributeError, TypeError) as e2:
+                logger.warning(f"DIALS multi_value_weight API also unavailable ({e2}), using fallback")
+                
+                # Fallback: single-point evaluation
+                scales = flex.double()
+                derivatives = flex.double()
+                
+                for q in q_clamped:
+                    try:
+                        value, weight, _ = self._smoother.value_weight(q, self.parameters)
+                        scales.append(value)
+                        # Append all parameter derivatives for this observation
+                        for w in weight:
+                            derivatives.append(w)
+                            
+                    except (AttributeError, TypeError):
+                        # Ultimate fallback - unity scale with zero derivatives
+                        scales.append(1.0)
+                        for j in range(self.n_params):
+                            derivatives.append(0.0)
 
         # For multiplicative scaling, ensure positive values
         scales_positive = flex.double()
@@ -209,12 +222,22 @@ class ResolutionSmootherComponent(ScaleComponentBase):
         # Clamp to smoother range
         q_clamp = max(self.q_min, min(self.q_max, q_magnitude))
 
-        # Evaluate using DIALS smoother
+        # Use correct DIALS API for single-point evaluation
         try:
-            scale_value = self._smoother.value(q_clamp, self.parameters)
+            # Set parameters and call value_weight for single point
+            self._smoother.set_parameters(self.parameters)
+            value_weight_result = self._smoother.value_weight(flex.double([q_clamp]))
+            scale_value = value_weight_result.value[0]
         except (AttributeError, TypeError):
             # Fallback if API is different
-            scale_value = 1.0
+            try:
+                # Try alternative API pattern
+                values, _, _ = self._smoother.multi_value_weight(
+                    flex.double([q_clamp]), self.parameters
+                )
+                scale_value = values[0]
+            except (AttributeError, TypeError):
+                scale_value = 1.0
 
         # Ensure positive scale
         scale = max(0.01, float(scale_value))

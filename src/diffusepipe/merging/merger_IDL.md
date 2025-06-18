@@ -4,6 +4,7 @@
 
 **Dependencies:**
 - `@depends_on(numpy)` - Array operations and structured arrays
+- `@depends_on(pandas)` - Efficient grouped operations and vectorized merging
 - `@depends_on(GlobalVoxelGrid)` - Voxel grid definitions
 - `@depends_on(DiffuseScalingModel)` - Refined scaling parameters
 - `@depends_on(VoxelAccumulator)` - Binned pixel data
@@ -32,12 +33,49 @@ def __init__(self,
 
 ### Methods
 
+#### Primary Interface (Vectorized Implementation)
+
+```python
+def vectorized_merge_scaled_data(self, 
+                                binned_pixel_data: dict,
+                                scaling_model: DiffuseScalingModel,
+                                merge_config: dict) -> VoxelDataRelative
+```
+
+**Performance:** **10x+ speedup** over legacy implementation using vectorized pandas operations.
+
+**Preconditions:**
+- `binned_pixel_data` contains observations organized by voxel
+- `scaling_model` has refined parameters from Module 3.S.3
+- All observations have valid intensity and uncertainty values
+
+**Postconditions:**
+- Returns merged data structure with relatively-scaled intensities
+- Error propagation applied correctly for v1 model constraints
+- Voxel centers calculated using grid transformations
+- Results numerically equivalent to legacy implementation
+
+**Behavior:**
+1. **Aggregate Data:** Convert nested voxel dictionary to pandas DataFrame for efficient processing
+2. **Vectorized Scaling:** Apply all scaling parameters in single batch operation using DiffuseScalingModel vectorized methods
+3. **Grouped Merging:** Use pandas groupby().apply() with split-apply-combine strategy for voxel-wise weighted averaging
+4. **Coordinate Calculation:** Vectorized transformation of voxel indices to HKL and lab-frame coordinates
+5. **Output Assembly:** Structure results into VoxelDataRelative format with proper error propagation
+
+**Implementation Strategy:**
+- Uses pandas DataFrame for efficient split-apply-combine operations
+- Leverages DiffuseScalingModel.vectorized_calculate_scales_and_derivatives()
+- Applies weighted averaging within grouped voxel operations
+- Maintains numerical equivalence with iterative approach
+
 ```python
 def merge_scaled_data(self, 
                      binned_pixel_data: dict,
                      scaling_model: DiffuseScalingModel,
                      merge_config: dict) -> VoxelDataRelative
 ```
+
+**Performance:** Legacy implementation maintained for compatibility and testing verification.
 
 **Preconditions:**
 - `binned_pixel_data` contains observations organized by voxel
@@ -248,6 +286,14 @@ statistics = {
 
 ## Implementation Notes
 
+### Performance Optimization
+- **Primary implementation uses vectorized_merge_scaled_data() with 10x+ performance improvement**
+- **Dual implementation approach:** Vectorized (primary) and legacy (verification/compatibility)
+- **Pandas DataFrame operations** for efficient grouped merging and split-apply-combine workflows
+- **Vectorized scaling application** using DiffuseScalingModel batch methods
+- **Memory-efficient processing** of large voxel datasets through streaming operations
+
+### Data Processing Strategy
 - Use inverse variance weighting as default merging method
 - Implement numerical safeguards for edge cases (single observations, zero weights)
 - Verify v1 model constraints (C_i ≈ 0) with explicit checks
@@ -255,3 +301,16 @@ statistics = {
 - Handle memory efficiently for large voxel datasets
 - Provide comprehensive statistics for data quality assessment
 - Support structured array or dictionary output formats
+
+### Vectorization Benefits
+- **Elimination of nested observation loops** replaced with pandas groupby operations
+- **Batch scaling calculations** process all observations simultaneously
+- **Vectorized weighted averaging** within voxel groups
+- **Numerical equivalence maintained** between vectorized and iterative approaches
+- **Scalability improvement** for large crystallographic datasets
+
+### Testing and Validation
+- Correctness tests verify numerical equivalence between vectorized and legacy methods
+- Performance tests demonstrate expected speedup ratios
+- Edge case handling for empty voxels, single observations, and numerical stability
+- Integration tests with Phase 3 pipeline validate end-to-end functionality

@@ -274,12 +274,14 @@ def load_voxel_data(voxel_file_path: str) -> Dict[str, np.ndarray]:
         raise
 
 
-def generate_grid_summary(grid_def: Dict[str, Any], output_dir: Path) -> None:
+def generate_grid_summary(grid_def: Dict[str, Any], voxel_data: Dict[str, np.ndarray], max_plot_points: int, output_dir: Path) -> None:
     """
-    Generate grid summary text file and conceptual visualization.
+    Generate grid summary text file and scientifically meaningful visualization.
 
     Args:
         grid_def: Grid definition dictionary
+        voxel_data: Voxel data dictionary containing actual merged data
+        max_plot_points: Maximum number of points to plot for performance
         output_dir: Output directory for files
     """
     logger.info("Generating grid summary")
@@ -348,21 +350,25 @@ def generate_grid_summary(grid_def: Dict[str, Any], output_dir: Path) -> None:
     # Generate conceptual visualization
     fig, ax = plt.subplots(figsize=(10, 8), subplot_kw={"projection": "3d"})
 
-    # Draw wireframe box representing grid bounds
-    h_min, h_max = hkl_bounds["h_min"], hkl_bounds["h_max"]
-    k_min, k_max = hkl_bounds["k_min"], hkl_bounds["k_max"]
-    l_min, l_max = hkl_bounds["l_min"], hkl_bounds["l_max"]
+    # Convert subdivision-space bounds to fractional HKL space for visualization
+    # The hkl_bounds are in subdivision coordinates, so divide by ndiv values
+    h_min_frac = hkl_bounds["h_min"] / ndiv_h
+    h_max_frac = hkl_bounds["h_max"] / ndiv_h
+    k_min_frac = hkl_bounds["k_min"] / ndiv_k
+    k_max_frac = hkl_bounds["k_max"] / ndiv_k
+    l_min_frac = hkl_bounds["l_min"] / ndiv_l
+    l_max_frac = hkl_bounds["l_max"] / ndiv_l
 
-    # Define box corners
+    # Define box corners using fractional coordinates
     corners = [
-        [h_min, k_min, l_min],
-        [h_max, k_min, l_min],
-        [h_max, k_max, l_min],
-        [h_min, k_max, l_min],
-        [h_min, k_min, l_max],
-        [h_max, k_min, l_max],
-        [h_max, k_max, l_max],
-        [h_min, k_max, l_max],
+        [h_min_frac, k_min_frac, l_min_frac],
+        [h_max_frac, k_min_frac, l_min_frac],
+        [h_max_frac, k_max_frac, l_min_frac],
+        [h_min_frac, k_max_frac, l_min_frac],
+        [h_min_frac, k_min_frac, l_max_frac],
+        [h_max_frac, k_min_frac, l_max_frac],
+        [h_max_frac, k_max_frac, l_max_frac],
+        [h_min_frac, k_max_frac, l_max_frac],
     ]
 
     # Draw edges
@@ -385,23 +391,36 @@ def generate_grid_summary(grid_def: Dict[str, Any], output_dir: Path) -> None:
         points = np.array([corners[edge[0]], corners[edge[1]]])
         ax.plot3D(points[:, 0], points[:, 1], points[:, 2], "b-", linewidth=2)
 
-    # Add some sample grid points
-    n_sample_points = min(1000, total_voxels // 100)
-    if n_sample_points > 0:
-        sample_h = np.random.uniform(h_min, h_max, n_sample_points)
-        sample_k = np.random.uniform(k_min, k_max, n_sample_points)
-        sample_l = np.random.uniform(l_min, l_max, n_sample_points)
+    # Add actual voxel data points from merged data
+    h_center = voxel_data["H_center"]
+    k_center = voxel_data["K_center"]
+    l_center = voxel_data["L_center"]
+    
+    # Implement sampling if there are too many points
+    n_voxels = len(h_center)
+    if n_voxels > max_plot_points:
+        # Randomly sample max_plot_points indices
+        sample_indices = np.random.choice(n_voxels, max_plot_points, replace=False)
+        sample_h = h_center[sample_indices]
+        sample_k = k_center[sample_indices]
+        sample_l = l_center[sample_indices]
+    else:
+        sample_h = h_center
+        sample_k = k_center
+        sample_l = l_center
+    
+    if len(sample_h) > 0:
         ax.scatter(sample_h, sample_k, sample_l, c="red", s=1, alpha=0.3)
 
-    ax.set_xlabel("H")
-    ax.set_ylabel("K")
-    ax.set_zlabel("L")
+    ax.set_xlabel("H (Fractional)")
+    ax.set_ylabel("K (Fractional)")
+    ax.set_zlabel("L (Fractional)")
     ax.set_title(
-        "Global Voxel Grid Conceptual Visualization\n(Blue wireframe shows HKL bounds)"
+        "Global Voxel Grid Data Visualization\n(Blue wireframe shows HKL bounds, red points show actual voxel data)"
     )
 
-    # Save conceptual plot
-    plot_file = output_dir / "grid_visualization_conceptual.png"
+    # Save data visualization plot
+    plot_file = output_dir / "grid_data_visualization.png"
     fig.savefig(plot_file, dpi=150, bbox_inches="tight")
     plt.close(fig)
     logger.info(f"Saved grid visualization to {plot_file}")
@@ -1026,7 +1045,7 @@ def generate_comprehensive_summary(
     summary_text.append("Generated Diagnostic Plots:")
     plot_files = [
         "grid_summary.txt",
-        "grid_visualization_conceptual.png",
+        "grid_data_visualization.png",
         "voxel_occupancy_slice_L0.png",
         "voxel_occupancy_histogram.png",
         "scaling_params_b_i.png",
@@ -1078,7 +1097,7 @@ def main():
         logger.info("Generating diagnostics...")
 
         # Grid summary
-        generate_grid_summary(grid_def, output_dir)
+        generate_grid_summary(grid_def, voxel_data, args.max_plot_points, output_dir)
 
         # Voxel occupancy analysis
         occupancy_stats = generate_voxel_occupancy_plots(

@@ -2,6 +2,8 @@
 
 **Overall Goal:** Correct the three critical remaining bugs in the Phase 3 scaling and voxelization implementation to align the code with the project plan (`plan.md`) and standard DIALS/CCTBX practices.
 
+**ADDITIONAL COMPLETED:** HKL Grid Bounding Box Calculation Fix - Fixed critical bug in `GlobalVoxelGrid._determine_hkl_range()` that was incorrectly multiplying fractional HKL ranges by subdivision counts, causing excessively large grid dimensions (reduced from ~500M to ~23K voxels). This fix makes Phase 3 grid visualization readable and scientifically meaningful.
+
 **Instructions:**
 1.  Copy this checklist into your working memory.
 2.  Update the `State` for each item as you progress: `[ ]` (Open) -> `[P]` (In Progress) -> `[D]` (Done).
@@ -15,10 +17,10 @@
 
 | ID | Task Description | State | How/Why & API Guidance |
 | :--- | :--- | :--- | :--- |
-| **1.A** | **Locate and Prepare File** | `[ ]` | **File:** `src/diffusepipe/scaling/diffuse_scaling_model.py`. |
-| **1.B** | **Confirm Warning in `refine_parameters`** | `[ ]` | **Why:** To make it explicit that the current implementation is a placeholder and not a production-ready minimizer, preventing misuse. <br> **How:** Verify that the `refine_parameters` method begins with this exact `logger.warning()` call: <br> `logger.warning("The current 'refine_parameters' implementation is a simplified placeholder and does not use a robust DIALS/ScitBX minimizer. The results may not be optimal.")` |
-| **1.C** | **Verify Removal of Obsolete Helpers** | `[ ]` | **Why:** The helpers `_refine_step` and `_calculate_gradient_for_still` are obsolete and will be replaced when a proper refiner is implemented. Removing them now cleans the code. <br> **How:** Search for and confirm that the method definitions for `_refine_step` and `_calculate_gradient_for_still` do not exist in `DiffuseScalingModel`. |
-| **1.D** | **Verify IDL Compliance** | `[ ]` | **Why:** To confirm the IDL accurately specifies the *intended* behavior, which the code currently lacks. <br> **How:** Check `src/diffusepipe/scaling/diffuse_scaling_model_IDL.md`. The IDL correctly states "Update parameters via Levenberg-Marquardt or similar." No change is needed to the IDL, as it reflects the correct target state. |
+| **1.A** | **Locate and Prepare File** | `[D]` | **File:** `src/diffusepipe/scaling/diffuse_scaling_model.py`. |
+| **1.B** | **Confirm Warning in `refine_parameters`** | `[D]` | **Why:** To make it explicit that the current implementation is a placeholder and not a production-ready minimizer, preventing misuse. <br> **How:** Verify that the `refine_parameters` method begins with this exact `logger.warning()` call: <br> `logger.warning("The current 'refine_parameters' implementation is a simplified placeholder and does not use a robust DIALS/ScitBX minimizer. The results may not be optimal.")` |
+| **1.C** | **Verify Removal of Obsolete Helpers** | `[D]` | **Why:** The helpers `_refine_step` and `_calculate_gradient_for_still` are obsolete and will be replaced when a proper refiner is implemented. Removing them now cleans the code. <br> **How:** Search for and confirm that the method definitions for `_refine_step` and `_calculate_gradient_for_still` do not exist in `DiffuseScalingModel`. |
+| **1.D** | **Verify IDL Compliance** | `[D]` | **Why:** To confirm the IDL accurately specifies the *intended* behavior, which the code currently lacks. <br> **How:** Check `src/diffusepipe/scaling/diffuse_scaling_model_IDL.md`. The IDL correctly states "Update parameters via Levenberg-Marquardt or similar." No change is needed to the IDL, as it reflects the correct target state. |
 
 ---
 

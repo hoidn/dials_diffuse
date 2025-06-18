@@ -188,31 +188,47 @@ class VoxelAccumulator:
         # Apply ASU mapping
         hkl_asu = self._map_to_asu(hkl_array)
 
-        # Get voxel indices
-        voxel_indices = []
-        valid_mask = []
-
-        for i, (h, k, l) in enumerate(hkl_asu):
-            try:
-                voxel_idx = self.global_voxel_grid.hkl_to_voxel_idx(h, k, l)
-                voxel_indices.append(voxel_idx)
-                valid_mask.append(True)
-            except (ValueError, IndexError):
-                # Outside grid boundaries
-                valid_mask.append(False)
-
-        valid_mask = np.array(valid_mask)
+        # Vectorized voxel indexing (replaces slow Python loop)
+        # Step 1: Convert fractional HKL to subdivision coordinates 
+        ndivs = np.array([self.global_voxel_grid.config.ndiv_h, 
+                         self.global_voxel_grid.config.ndiv_k, 
+                         self.global_voxel_grid.config.ndiv_l])
+        hkl_sub = np.round(hkl_asu * ndivs).astype(int)
+        
+        # Step 2: Vectorized bounds checking
+        hkl_min = np.array(self.global_voxel_grid.hkl_min)
+        hkl_max = np.array(self.global_voxel_grid.hkl_max)
+        valid_mask = np.all((hkl_sub >= hkl_min) & (hkl_sub <= hkl_max), axis=1)
+        
         n_valid = np.sum(valid_mask)
-
         if n_valid == 0:
             logger.warning(f"No valid observations for still {still_id}")
+            # Debug logging to help diagnose coordinate system issues
+            if len(hkl_sub) > 0:
+                sample_hkl_sub = hkl_sub[0]
+                logger.debug(f"Sample subdivision coordinate: {sample_hkl_sub}")
+                logger.debug(f"Bounds: hkl_min={hkl_min}, hkl_max={hkl_max}")
+                logger.debug(f"Input fractional HKL range: {np.min(hkl_asu, axis=0)} to {np.max(hkl_asu, axis=0)}")
             return 0
-
-        # Filter to valid observations
+        
+        # Step 3: Filter all data arrays to valid observations only
+        hkl_sub_valid = hkl_sub[valid_mask]
         valid_q_vectors = q_vectors_lab[valid_mask]
         valid_intensities = intensities[valid_mask]
         valid_sigmas = sigmas[valid_mask]
-        valid_voxel_indices = np.array(voxel_indices)[valid_mask]
+        
+        # Step 4: Vectorized linear indexing calculation
+        # Shift coordinates to positive indices
+        hkl_idx = hkl_sub_valid - hkl_min
+        
+        # Get grid ranges for linear indexing
+        h_range = self.global_voxel_grid.hkl_max[0] - self.global_voxel_grid.hkl_min[0] + 1
+        k_range = self.global_voxel_grid.hkl_max[1] - self.global_voxel_grid.hkl_min[1] + 1
+        
+        # Calculate linear voxel indices using vectorized operations
+        valid_voxel_indices = (hkl_idx[:, 2] * (h_range * k_range) + 
+                              hkl_idx[:, 1] * h_range + 
+                              hkl_idx[:, 0])
 
         # Store observations
         if self.backend == "memory":
@@ -287,39 +303,23 @@ class VoxelAccumulator:
         return np.array(hkl_fractional)
 
     def _map_to_asu(self, hkl_array: np.ndarray) -> np.ndarray:
-        """Map fractional HKL coordinates to the asymmetric unit using CCTBX symmetry operations."""
-        import numpy as np
-        from cctbx import crystal
-
-        # Get crystal model from the grid
-        crystal_model = self.global_voxel_grid.crystal_avg_ref
-
-        # Create proper crystal symmetry object from unit cell and space group
-        unit_cell = crystal_model.get_unit_cell()
-        space_group = crystal_model.get_space_group()
-        crystal_symmetry = crystal.symmetry(
-            unit_cell=unit_cell, space_group=space_group
-        )
-
-        # Convert to numpy array for easier manipulation
-        coords_array = np.array(hkl_array)
+        """Map fractional HKL coordinates to the asymmetric unit using cctbx.sgtbx.space_group_info.map_to_asu."""
+        from dials.array_family import flex
         
-        # Round to nearest integers for miller.set creation
-        miller_indices_int = np.round(coords_array).astype(int)
-        miller_indices = flex.miller_index(miller_indices_int.tolist())
-        miller_set = miller.set(
-            crystal_symmetry=crystal_symmetry, indices=miller_indices
-        )
+        # Ensure we are working with a NumPy array
+        if not isinstance(hkl_array, np.ndarray):
+            hkl_array = np.array(hkl_array)
         
-        # Map to ASU
-        asu_set = miller_set.map_to_asu()
+        # Convert to flex array for cctbx
+        hkl_flex = flex.vec3_double(hkl_array)
         
-        # Apply the same transformation to fractional coordinates
-        asu_indices_int = asu_set.indices().as_vec3_double().as_numpy_array()
-        transformation_applied = asu_indices_int - miller_indices_int
-        asu_fractional = coords_array + transformation_applied
+        # Use the correct API that handles fractional coordinates
+        # Get the space_group_info from the space_group
+        space_group_info = self.space_group.info()
+        hkl_asu_flex = space_group_info.map_to_asu(hkl_flex)
         
-        return asu_fractional
+        # Convert back to numpy array
+        return hkl_asu_flex.as_numpy_array()
 
     def _store_observations_memory(
         self,
@@ -440,29 +440,9 @@ class VoxelAccumulator:
             voxel_obs = self.get_observations_for_voxel(voxel_idx)
 
             if voxel_obs["n_observations"] > 0:
-                # Get voxel center coordinates
-                h, k, l = self.global_voxel_grid.voxel_idx_to_hkl_center(voxel_idx)
-                q_center = self.global_voxel_grid.get_q_vector_for_voxel_center(
-                    voxel_idx
-                )
-
-                # Format observations for scaling
-                observations = []
-                for i in range(voxel_obs["n_observations"]):
-                    obs = {
-                        "intensity": voxel_obs["intensities"][i],
-                        "sigma": voxel_obs["sigmas"][i],
-                        "still_id": voxel_obs["still_ids"][i],
-                        "q_vector_lab": voxel_obs["q_vectors_lab"][i],
-                    }
-                    observations.append(obs)
-
-                binned_data[voxel_idx] = {
-                    "observations": observations,
-                    "n_observations": voxel_obs["n_observations"],
-                    "voxel_center_hkl": (h, k, l),
-                    "voxel_center_q": np.array(q_center.elems),
-                }
+                # voxel_obs is already the efficient dictionary of NumPy arrays we need
+                # Simply assign it directly - no conversion needed
+                binned_data[voxel_idx] = voxel_obs
 
         logger.info(f"Retrieved binned data for {len(binned_data)} voxels")
         return binned_data

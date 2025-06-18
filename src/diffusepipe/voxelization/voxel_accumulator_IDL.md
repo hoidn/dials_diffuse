@@ -62,7 +62,7 @@ def add_observations(self,
 
 **Behavior:**
 1. Transform `q_vectors_lab` to fractional HKL using `global_voxel_grid.A_avg_ref.inverse()`
-2. Map fractional HKL coordinates to the asymmetric unit using CCTBX symmetry operations
+2. Map fractional HKL coordinates to the asymmetric unit using `cctbx.sgtbx.space_group_info.map_to_asu`
 3. Determine voxel indices using `global_voxel_grid.hkl_to_voxel_idx()`
 4. Store `(intensity, sigma, still_id, q_lab)` for each voxel
 5. Update accumulation statistics if using Welford's algorithm
@@ -106,19 +106,13 @@ def get_all_binned_data_for_scaling(self) -> dict
 ```python
 binned_data_global = {
     voxel_idx: {
-        "observations": list[ObservationTuple],  # List of (I, sigma, still_id, q_lab)
-        "n_observations": int,
-        "voxel_center_hkl": tuple[float, float, float],
-        "voxel_center_q": numpy.ndarray  # Shape (3,) lab-frame q-vector
+        "intensities": numpy.ndarray,     # All intensities for this voxel
+        "sigmas": numpy.ndarray,         # Corresponding uncertainties  
+        "still_ids": numpy.ndarray,      # Still identifiers
+        "q_vectors_lab": numpy.ndarray,  # Original lab-frame q-vectors
+        "n_observations": int            # Number of observations
     }
     # ... for all voxels with data
-}
-
-ObservationTuple = {
-    "intensity": float,
-    "sigma": float, 
-    "still_id": int,
-    "q_vector_lab": numpy.ndarray  # Shape (3,)
 }
 ```
 
@@ -191,6 +185,6 @@ def finalize(self) -> None
 - Pre-allocate datasets when possible for performance
 - Use memory backend for small test datasets
 - Store q_vectors in original lab frame for traceability
-- ASU mapping uses CCTBX symmetry operations for robust space group handling
+- **ASU mapping uses correct CCTBX API pattern**: `cctbx.sgtbx.space_group_info.map_to_asu()` for direct fractional coordinate processing
 - Voxel indices calculated using GlobalVoxelGrid methods
 - Support both incremental addition and batch processing

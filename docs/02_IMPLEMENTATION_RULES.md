@@ -31,23 +31,56 @@ This document outlines the standard conventions, patterns, and rules for impleme
 
 **4. Safe Refactoring Practices**
 
-*   **Incremental Approach:** When refactoring large methods or classes (>100 lines), work in small increments of 5-10 lines at a time. Never attempt to replace 300+ lines in a single operation.
-*   **Syntax Verification:** After each change, verify file syntax immediately: `python -m py_compile file.py`. Do not proceed to the next change until syntax is confirmed correct.
-*   **Frequent Commits:** Commit working code after each successful incremental change. This provides recovery points if later changes introduce issues.
-*   **Extract First, Then Modify:** When moving code to new files, create and test the new file completely before modifying the original. Never perform both operations simultaneously.
-*   **Verify Imports:** After any refactoring involving imports, test that all imports work before proceeding with method calls or class usage.
-*   **Avoid Complex String Replacements:** For large method extractions, manual verification is safer than complex multi-line string matching operations.
+### 4.1 The 5-10 Line Rule (MANDATORY)
 
-**Critical Warning Signs:**
+**Core Principle:** Never attempt to refactor more than 5-10 lines at once.
+
+**Proven Process:**
+1. **Incremental Changes:** When refactoring large methods or classes (>100 lines), work in small increments of 5-10 lines at a time. Never attempt to replace 300+ lines in a single operation.
+2. **Syntax Verification:** After each change, verify file syntax immediately: `python -m py_compile file.py`. Do not proceed to the next change until syntax is confirmed correct.
+3. **Frequent Commits:** Commit working code after each successful incremental change. This provides recovery points if later changes introduce issues.
+
+### 4.2 Extract First, Then Modify Pattern
+
+**Rule:** When moving code to new files, create and test the new file completely before modifying the original. Never perform both operations simultaneously.
+
+**Process:**
+1. Create new file with extracted code
+2. Test new file completely (imports, syntax, basic functionality)
+3. Only then modify the original file to use the new code
+4. Verify imports work before implementing method calls
+
+### 4.3 Refactoring Safety Checks
+
+**Before Each Change:**
+*   Verify current syntax: `python -m py_compile file.py`
+*   Ensure file is under version control with clean state
+*   Test imports independently before implementing usage
+
+**After Each Change:**
+*   Immediate syntax verification
+*   Commit if successful
+*   If syntax fails, immediately revert and restart with smaller increment
+
+### 4.4 Critical Warning Signs
+
+**File Corruption Indicators:**
 *   File "appears" to work but contains syntax errors in unused code paths
 *   Duplicate method definitions with different signatures
 *   Orphaned code blocks with incorrect indentation
 *   Import statements without corresponding class usage
 
-**Recovery Strategy:**
-*   If refactoring corruption occurs, immediately revert to the last known good state using version control
-*   Restart refactoring with smaller incremental changes
-*   Use proper IDE/editor with syntax highlighting and error detection
+**These signs indicate immediate need to revert to last known good state.**
+
+### 4.5 Recovery Strategy
+
+**When Refactoring Corruption Occurs:**
+1. **Immediate Revert:** Use version control to restore last known good state - do not attempt to fix corruption
+2. **Restart Incrementally:** Re-implement refactoring with smaller steps (2-3 lines max)
+3. **Use Proper Tools:** IDE/editor with syntax highlighting and error detection
+4. **Avoid Complex String Replacements:** Manual verification is safer than complex multi-line string matching operations
+
+**This process is based on real failure experience with 350+ line corruption incident. See `docs/LESSONS_LEARNED.md` for detailed case study.**
 
 **5. Coding Style and Formatting**
 
@@ -93,6 +126,9 @@ This document outlines the standard conventions, patterns, and rules for impleme
 *   **Batch Processing:** Process coordinates, q-vectors, and corrections as arrays rather than individual elements. Group operations that can be parallelized.
 *   **Memory Efficiency:** Minimize Python loop overhead through vectorized NumPy operations. Use array-based data structures over lists of individual objects.
 *   **Algorithmic Validation:** Test vectorized implementations against known reference results or simplified test cases to ensure correctness.
+*   **Split-Apply-Combine Strategy:** Use pandas DataFrame groupby operations for efficient voxel-wise processing instead of nested loops.
+*   **Matrix Operations Priority:** Always prefer matrix multiplication (`@` operator) over element-wise loops for linear algebra operations.
+*   **Proven Performance Gains:** Real-world experience shows 10x+ speedups are achievable with proper vectorization (see `docs/LESSONS_LEARNED.md` for case studies).
 
 **Performance Measurement Framework:**
 *   **Mandatory Performance Tests:** All computational methods processing arrays must include performance benchmarks in their test suite.
@@ -138,7 +174,76 @@ assert np.allclose(result, result_array, rtol=1e-15)
 *   **Test Edge Cases:** Verify optimizations work correctly with boundary conditions
 *   **Code Review Checklist:** All array processing code must be reviewed for vectorization opportunities
 
-**5.2 Scientific Accuracy Implementation Guidelines**
+**5.2 Numerical Stability Requirements (MANDATORY)**
+
+### 5.2.1 Division Safety Rules
+
+**Core Principle:** Never divide by computed values without stabilization.
+
+**Mandatory Patterns:**
+```python
+# REQUIRED: Epsilon stabilization for variance calculations
+safe_variance = variance + 1e-10
+weights = 1.0 / safe_variance
+
+# REQUIRED: Safe division with threshold replacement
+safe_scales = np.where(np.abs(scales) > 1e-9, scales, 1e-9)
+scaled_values = observations / safe_scales
+
+# REQUIRED: JSON serialization type conversion
+key = int(still_id)  # Cast NumPy int64 to Python int
+result_dict[key] = values
+```
+
+### 5.2.2 Numerical Validation Requirements
+
+**Mandatory Checks:**
+*   **Division Operations:** All division operations must include epsilon stabilization (1e-10) or use safe division patterns
+*   **Variance Calculations:** All variance and weight calculations must be protected against zero denominators
+*   **Scale Factor Stability:** All multiplicative scale factors must be checked for numerical range and stability
+*   **JSON Compatibility:** All NumPy integer types used as dictionary keys must be cast to Python int for serialization
+*   **Range Validation:** Critical outputs must include numerical range checking (`np.isnan`, `np.isinf`, extreme values)
+
+### 5.2.3 Code Review Checklist for Numerical Code
+
+**Required Reviews:**
+1. ✅ All division operations include stabilization or safe division patterns
+2. ✅ Variance and weight calculations protected against zero denominators  
+3. ✅ Scale factors checked for numerical range and stability
+4. ✅ JSON serialization compatibility verified for all dictionary keys
+5. ✅ Unit tests include edge cases (zero, near-zero, extreme values)
+6. ✅ Validation includes numerical range checking for critical outputs
+
+**Warning Signs to Flag:**
+*   Division operations on computed values without stabilization
+*   Variance calculations that could produce exact zeros
+*   NumPy integer types used as dictionary keys for JSON output
+*   Missing numerical validation in iterative refinement algorithms
+*   Test suites that only use "nice" input values
+
+### 5.2.4 Production Safeguards
+
+**Validation Helper Pattern:**
+```python
+def validate_numerical_health(values, context="computation"):
+    """Validate that computed values are numerically stable."""
+    if np.any(np.isnan(values)):
+        raise ValueError(f"NaN values detected in {context}")
+    if np.any(np.isinf(values)):
+        raise ValueError(f"Infinite values detected in {context}")
+    if np.any(np.abs(values) > 1e10):
+        logger.warning(f"Very large values detected in {context}: max={np.max(np.abs(values))}")
+```
+
+**Integration Requirements:**
+*   Run E2E pipelines with diverse input data to catch numerical edge cases
+*   Include validation scripts that check for numerical health of outputs
+*   Monitor convergence behavior in iterative algorithms
+*   Test serialization/deserialization round-trips for all data structures
+
+**This section is based on real production failures in scaling refinement. See `docs/LESSONS_LEARNED.md` for detailed case studies.**
+
+**5.3 Scientific Accuracy Implementation Guidelines**
 
 **NIST Data Integration Standards:**
 *   **Reference Data Sources:** Use tabulated NIST X-ray mass attenuation coefficients over rough approximations for critical calculations.
@@ -177,6 +282,61 @@ def calculate_air_attenuation(wavelength_angstrom, path_length_mm,
 
 *   **Naming:** Follow language-standard naming conventions (e.g., snake_case for Python variables/functions, CamelCase for Python classes). Use descriptive names.
 
+**5.3 Data Structure Conventions for Inter-Component Communication (NEW SECTION)**
+
+To maintain performance across the entire pipeline, it is not enough to vectorize calculations *within* a component. The data structures used to pass information *between* components must also be designed for efficiency.
+
+**The "Struct-of-Arrays" Principle:**
+
+*   **Rule:** When passing a large collection of records (e.g., >1000 items) between components, the data structure **MUST** use a "Struct-of-Arrays" (SoA) format. It **MUST NOT** use an "Array-of-Structs" (AoS) format.
+
+    *   **ANTI-PATTERN (Array-of-Structs - SLOW, HIGH MEMORY):** A Python list where each element is an object or a dictionary.
+        ```python
+        # DO NOT DO THIS FOR LARGE DATASETS
+        inefficient_data = [
+            {"intensity": 100.0, "sigma": 10.0, "still_id": 1},
+            {"intensity": 120.0, "sigma": 12.0, "still_id": 2},
+            # ... millions more dicts ...
+        ]
+        ```
+
+    *   **CORRECT PATTERN (Struct-of-Arrays - FAST, LOW MEMORY):** A single dictionary where each key holds a NumPy array containing all values for that field.
+        ```python
+        # DO THIS
+        efficient_data = {
+            "intensities": np.array([100.0, 120.0, ...]),
+            "sigmas": np.array([10.0, 12.0, ...]),
+            "still_ids": np.array([1, 2, ...]),
+        }
+        ```
+
+*   **Rationale:** The "Array-of-Structs" pattern introduces massive overhead from creating millions of individual Python objects. It breaks vectorization, forcing the consuming component to loop through the list to re-assemble arrays. The "Struct-of-Arrays" pattern maintains data in contiguous, cache-friendly NumPy arrays, minimizing memory usage and allowing the receiving component to perform vectorized operations immediately.
+
+*   **Case Study (VoxelAccumulator Failure):** The performance hang in `get_all_binned_data_for_scaling` was caused by a direct violation of this principle. The method was converting its efficient internal HDF5 arrays into a `list[dict]` structure, which caused the system to hang when trying to allocate memory for millions of Python objects.
+
+**IDL Specification Guideline:**
+
+*   When defining an `Expected Data Format` in an `*_IDL.md` file for a method that returns a large collection, the format **MUST** be specified in the "Struct-of-Arrays" format.
+
+    *   **ANTI-PATTERN in IDL:**
+        `// Returns: list<ObservationTuple>`
+
+    *   **CORRECT PATTERN in IDL:**
+        ```
+        // Expected Data Format:
+        // Returns: map<string, numpy.ndarray>
+        // {
+        //     "intensities": numpy.ndarray,
+        //     "sigmas": numpy.ndarray,
+        //     "still_ids": numpy.ndarray,
+        //     ...
+        // }
+        ```
+
+**Code Review Mandate:**
+
+*   Any Pull Request that includes a method or function that returns a collection of data must be reviewed for adherence to the "Struct-of-Arrays" principle. A method returning a `list` of objects or `dict`s where the list could become large (>1000 items) must be rejected unless a strong justification is provided.
+
 **5. Data Handling: Parse, Don't Validate (Leveraging Models like Pydantic)**
 
 *   **Principle:** Instead of passing raw dictionaries or loosely typed data and validating fields throughout the code, parse external/untrusted data (e.g., API responses, configuration files, parameters described via IDL "Expected Data Format") into **well-defined data models** (e.g., Pydantic models in Python, or data classes/structs) at the boundaries of your system or component.
@@ -206,7 +366,7 @@ def calculate_air_attenuation(wavelength_angstrom, path_length_mm,
             print(f"Processing task: {params.name} with {params.retries} retries")
             # ... logic using validated params ...
         except ValidationError as e:
-            print(f"Invalid task parameters: {e}")
+            print(f"Invalid task parameters: <!-- Warning: File 'e' not found -->")
             # Handle error
     ```
 *   **Understanding External Library Data Structures:** When your component consumes objects directly instantiated or returned by an external library, consult that library's documentation to understand their precise structure, attributes, and access methods. Do not assume a generic structure. This understanding should inform both implementation and test case design.
@@ -306,15 +466,19 @@ def calculate_air_attenuation(wavelength_angstrom, path_length_mm,
 *   **Test Setup for Error Conditions:** Ensure tests for error handling satisfy preconditions up to the point where the error is expected.
 *   **Testing Configurable Behavior and Constants:** Write assertions that test behavioral outcomes rather than being rigidly tied to exact constant values. Review tests when constants change.
 
-**7.1 C++ Backend Object Compatibility Testing**
+**7.1 C++ Backend Object Compatibility Testing (MANDATORY)**
 
-When testing components that interact with DIALS or other libraries with C++ backends, special considerations apply:
+### 7.1.1 DIALS C++ Integration Requirements
 
-**DIALS C++ Integration Requirements:**
-*   **Real Class Mocking:** Create actual Python classes that mimic C++ object interfaces instead of using MagicMock for constructors that will be passed to C++ code.
-*   **Type Compatibility:** Ensure mock objects work with `isinstance()` checks and C++ type conversion requirements that occur during library calls.
-*   **Constructor vs Method Patching:** Distinguish between patching methods (use `patch.object`) and classes (use proper mock classes with required magic methods).
-*   **Magic Method Implementation:** Add proper `__len__`, `__getitem__`, `__iter__`, and other magic methods to mock classes as required by the actual usage patterns.
+When testing components that interact with DIALS or other libraries with C++ backends, standard mocking approaches often fail due to type compatibility issues.
+
+**Real Class Mocking (REQUIRED):**
+Create actual Python classes that mimic C++ object interfaces instead of using MagicMock for constructors that will be passed to C++ code.
+
+**Type Compatibility Checks:**
+*   Ensure mock objects work with `isinstance()` checks required by C++ backends
+*   Implement proper magic methods as required by actual usage patterns
+*   Test that mocks survive C++ type conversion requirements during library calls
 
 **Example C++ Compatible Mock Class:**
 ```python
@@ -335,17 +499,49 @@ class MockExperimentList:
     # Required for isinstance() compatibility with C++ backends
 ```
 
-**Common C++ Integration Errors to Avoid:**
+### 7.1.2 Mock Strategy Evolution
+
+**Proven Progression Pattern:**
+1. **Mock → MagicMock:** For objects requiring magic methods (`__getitem__`, `__and__`, `__or__`, `__iter__`)
+2. **MagicMock → Real Components:** For authentic integration testing where possible
+3. **Real DIALS flex Arrays:** Replace complex mock hierarchies with actual DIALS data structures
+
+**Patching Strategy:**
+*   **Method Patching:** Use `patch.object(adapter, '_method_name')` for internal method mocking
+*   **Avoid Module-Level Patching:** Don't patch module-level imports; patch actual method calls
+*   **flex Module Mocking:** Create comprehensive mocks with proper `bool`, `grid`, and `int` setup
+
+### 7.1.3 Common C++ Integration Failures
+
+**Known Failure Patterns:**
 *   `ExperimentList([MagicMock])` fails due to C++ backend requiring real Experiment objects
-*   Mock objects lacking proper structure to work with `isinstance()` checks
+*   Mock objects lacking proper structure for `isinstance()` checks
 *   Incomplete mock setup for vectorized operations in `dials.array_family.flex` modules
-*   Wrong patch targets (patching module-level imports instead of actual method calls)
+*   Wrong patch targets (patching imports instead of method calls)
 
 **Proven Fix Patterns:**
-*   Use `patch.object(adapter, '_method_name')` for internal method mocking rather than module-level patching
-*   Create comprehensive `flex` module mocks with proper `bool`, `grid`, and `int` mock setup
+*   Use real DIALS `flex` arrays instead of complex mock hierarchies when possible
+*   Create comprehensive `flex` module mocks with proper magic method support
 *   Test import error scenarios using `builtins.__import__` patching with proper `sys.modules` cleanup
-*   Enhance reflections mocks with proper `__contains__` and `__getitem__` setup for real implementation compatibility
+*   Enhance reflections mocks with proper `__contains__` and `__getitem__` setup
+
+### 7.1.4 Realistic Testing Bounds
+
+**Update Assertions to Match Detector Physics:**
+*   Solid angle corrections should be < 3e6, not arbitrary small values
+*   Use realistic tolerances based on actual detector geometries
+*   Test with actual data ranges representative of production use
+
+**Example Bound Updates:**
+```python
+# Before: Unrealistic assertion
+assert correction_factor < 1e6  # Too restrictive
+
+# After: Physics-based assertion  
+assert correction_factor < 3e6  # Matches actual detector geometry
+```
+
+**This section is based on systematic test failure remediation achieving 64% reduction in failures. See `docs/LESSONS_LEARNED.md` for detailed case studies.**
 
 **7.2 Test Suite Remediation Methodology**
 
@@ -467,16 +663,49 @@ real_detector_data = flex.bool(flex.grid(height, width), True)
 
 **15. DIALS Integration Best Practices**
 
-*   **Data Type Detection (Module 1.S.0):** Always check CBF headers for `Angle_increment`. This value determines the processing pathway.
-*   **Processing Mode Selection:**
-    *   **True Stills Data (Angle_increment = 0.0°):** Use the `DIALSStillsProcessAdapter`, which wraps the `dials.stills_process` Python API. Ensure PHIL parameters are appropriate for stills.
-    *   **Sequence Data (Angle_increment > 0.0°):** Use the `DIALSSequenceProcessAdapter`, which executes a sequential DIALS CLI workflow (`dials.import` → `dials.find_spots` → `dials.index` → `dials.integrate`). Use the critical PHIL parameters specified in `plan.md` (Section 0.6) for this route.
-*   **Automatic Routing:** The `StillsPipelineOrchestrator` (or equivalent) should implement this data type detection and routing logic.
-*   **Configuration:** Allow forcing a processing mode via configuration (`DIALSStillsProcessConfig.force_processing_mode`) to override auto-detection if necessary.
-*   **Adapter Output Consistency:** Both adapters (`DIALSStillsProcessAdapter` and `DIALSSequenceProcessAdapter`) must return DIALS `Experiment` and `reflection_table` objects with a consistent structure for downstream modules.
-*   **PHIL Parameter Validation:** For sequence processing, ensure the critical PHIL parameters (e.g., `spotfinder.filter.min_spot_size=3`, `indexing.method=fft3d`, `geometry.convert_sequences_to_stills=false`) are correctly applied by the `DIALSSequenceProcessAdapter`. Compare with working manual DIALS logs if issues arise.
-*   **Validation Approach (Module 1.S.1.Validation):** The primary geometric validation method is Q-vector consistency (`q_model` vs. `q_observed`). Pixel-based validation is a simpler alternative or debug tool.
-*   **Debugging Strategy:** When troubleshooting, first confirm the correct processing route was chosen. Then, compare DIALS logs from the failing adapter with logs from a manually executed, working DIALS workflow for that data type.
+### 15.1 Mandatory Data Type Detection
+
+**Core Requirement:** Always check CBF headers for `Angle_increment` before processing. This value determines the processing pathway and prevents processing failures.
+
+**Processing Mode Selection:**
+*   **True Stills Data (Angle_increment = 0.0°):** Use the `DIALSStillsProcessAdapter`, which wraps the `dials.stills_process` Python API. Ensure PHIL parameters are appropriate for stills.
+*   **Sequence Data (Angle_increment > 0.0°):** Use the `DIALSSequenceProcessAdapter`, which executes a sequential DIALS CLI workflow (`dials.import` → `dials.find_spots` → `dials.index` → `dials.integrate`). Use the critical PHIL parameters specified in `plan.md` (Section 0.6) for this route.
+
+**Critical PHIL Parameters for Sequence Processing:**
+```python
+# REQUIRED parameters for oscillation data (not defaults):
+phil_overrides = [
+    "spotfinder.filter.min_spot_size=3",          # Not default 2
+    "spotfinder.threshold.algorithm=dispersion",   # Not default  
+    "indexing.method=fft3d",                       # Not fft1d
+    "geometry.convert_sequences_to_stills=false"   # Preserve oscillation
+]
+```
+
+### 15.2 Adapter Implementation Requirements
+
+**Automatic Routing:** The `StillsPipelineOrchestrator` (or equivalent) must implement data type detection and routing logic automatically.
+
+**Configuration Override:** Allow forcing a processing mode via configuration (`DIALSStillsProcessConfig.force_processing_mode`) to override auto-detection when necessary for debugging.
+
+**Adapter Output Consistency:** Both adapters (`DIALSStillsProcessAdapter` and `DIALSSequenceProcessAdapter`) must return DIALS `Experiment` and `reflection_table` objects with identical structure for downstream compatibility.
+
+### 15.3 Validation and Debugging
+
+**Primary Validation Method:** Q-vector consistency checking (`q_model` vs. `q_observed`) with tolerance typically `|Δq|` < 0.01 Å⁻¹. Pixel-based validation is a secondary diagnostic tool.
+
+**Debugging Strategy:**
+1. **Confirm Processing Route:** First verify the correct processing route was chosen based on CBF header analysis
+2. **Compare DIALS Logs:** Compare logs from failing adapter with manually executed, working DIALS workflow for that data type
+3. **PHIL Parameter Verification:** Ensure critical parameters are correctly applied, especially for sequence processing
+4. **CLI Fallback:** Use CLI-based adapters as fallback for unstable Python APIs
+
+**API Compatibility Monitoring:**
+*   Test DIALS imports independently before integration 
+*   Implement version compatibility checks where feasible
+*   Watch for common breaking changes: PHIL scope imports, method signatures, import paths
+
+**This section incorporates lessons from systematic DIALS integration failures. See `docs/LESSONS_LEARNED.md` for detailed troubleshooting case studies.**
 
 **16. Service/Plugin Registration and Naming (If Applicable)**
 
@@ -500,5 +729,3 @@ This guide provides templates and detailed instructions for creating task-specif
 - Incremental implementation with verification points
 - Documentation updates
 - Code quality standards adherence
-
-Using implementation checklists transforms ad-hoc development into a systematic, verifiable process that maintains high code quality and reduces the risk of overlooking critical requirements.

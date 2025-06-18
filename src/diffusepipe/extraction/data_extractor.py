@@ -647,22 +647,40 @@ class DataExtractor:
             else:
                 return np.empty((0, 3)), np.empty(0), np.empty(0), None, None, None
 
-        # Step 2: Batch calculate lab coordinates and q-vectors
-        lab_coords = np.zeros((n_pixels, 3))
-        for i in range(n_pixels):
-            try:
-                lab_coord = panel.get_pixel_lab_coord(
-                    (float(fast_coords[i]), float(slow_coords[i]))
-                )
-                lab_coords[i] = [lab_coord[0], lab_coord[1], lab_coord[2]]
-            except Exception as e:
-                logger.debug(
-                    f"Failed to get lab coord for pixel ({fast_coords[i]}, {slow_coords[i]}): {e}"
-                )
-                # Mark as invalid - will be filtered later
-                lab_coords[i] = [np.nan, np.nan, np.nan]
+        # Step 2: Vectorized batch calculation of lab coordinates using DIALS batch API
+        from dials.array_family import flex
+        
+        # Convert pixel coordinates to flex.vec2_double for batch processing
+        pixel_coords_flex = flex.vec2_double()
+        for fast, slow in zip(fast_coords, slow_coords):
+            pixel_coords_flex.append((float(fast), float(slow)))
+        
+        # Batch calculate lab coordinates - major performance improvement!
+        try:
+            lab_coords_flex = panel.get_lab_coord(pixel_coords_flex)
+            # Convert flex.vec3_double to numpy array
+            lab_coords = np.array([[coord[0], coord[1], coord[2]] for coord in lab_coords_flex])
+            
+            logger.debug(f"Successfully calculated {len(lab_coords)} lab coordinates using vectorized DIALS API")
+            
+        except Exception as e:
+            logger.warning(f"Batch lab coordinate calculation failed, falling back to individual calculation: {e}")
+            # Fallback to original method if batch fails
+            lab_coords = np.zeros((n_pixels, 3))
+            for i in range(n_pixels):
+                try:
+                    lab_coord = panel.get_pixel_lab_coord(
+                        (float(fast_coords[i]), float(slow_coords[i]))
+                    )
+                    lab_coords[i] = [lab_coord[0], lab_coord[1], lab_coord[2]]
+                except Exception as e:
+                    logger.debug(
+                        f"Failed to get lab coord for pixel ({fast_coords[i]}, {slow_coords[i]}): {e}"
+                    )
+                    # Mark as invalid - will be filtered later
+                    lab_coords[i] = [np.nan, np.nan, np.nan]
 
-        # Filter out invalid coordinates
+        # Filter out invalid coordinates (NaN values)
         valid_coords_mask = ~np.isnan(lab_coords).any(axis=1)
         lab_coords = lab_coords[valid_coords_mask]
         slow_coords = slow_coords[valid_coords_mask]
@@ -809,27 +827,19 @@ class DataExtractor:
                         beam, experiment.goniometer, experiment.detector
                     )
 
-                # Convert to DIALS flex arrays
-                s1_flex = flex.vec3_double()
-                panel_indices_flex = flex.size_t()
+                # Convert to DIALS flex arrays using vectorized approach
+                s1_flex = flex.vec3_double([tuple(s1_vec) for s1_vec in s1_vectors])
+                panel_indices_flex = flex.size_t([0] * n_pixels)  # Single panel for now
 
-                for i in range(n_pixels):
-                    s1_flex.append(tuple(s1_vectors[i]))
-                    panel_indices_flex.append(0)  # Single panel for now
-
-                # Get LP corrections (returns divisors)
+                # Get LP corrections (returns divisors) - vectorized conversion
                 lp_divisors = self._corrections_obj.lp(s1_flex)
-                lp_multipliers = np.array(
-                    [1.0 / lp_divisors[i] for i in range(len(lp_divisors))]
-                )
+                lp_multipliers = 1.0 / np.array(lp_divisors)
 
-                # Get QE corrections (returns multipliers)
+                # Get QE corrections (returns multipliers) - vectorized conversion
                 qe_multipliers_flex = self._corrections_obj.qe(
                     s1_flex, panel_indices_flex
                 )
-                qe_multipliers = np.array(
-                    [qe_multipliers_flex[i] for i in range(len(qe_multipliers_flex))]
-                )
+                qe_multipliers = np.array(qe_multipliers_flex)
 
             except Exception as e:
                 logger.debug(f"DIALS corrections failed, using defaults: {e}")

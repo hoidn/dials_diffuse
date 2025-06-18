@@ -693,16 +693,235 @@ class TestDataExtractorPhase2:
 class TestDataExtractorPhase2Integration:
     """Integration tests for Phase 2 DataExtractor with realistic data."""
 
-    def test_full_extraction_pipeline_with_corrections(self):
-        """Test the complete extraction pipeline with all Phase 2 corrections."""
-        # This would be an integration test with real DIALS data
-        # For now, it's a placeholder for future implementation
-        pytest.skip(
-            "Integration test requires real DIALS data - implement when available"
+    def test_vectorized_vs_iterative_correctness(self):
+        """Test that vectorized processing produces identical results to iterative processing."""
+        import tempfile
+        from unittest.mock import Mock, patch, MagicMock
+        
+        extractor = DataExtractor()
+        
+        # Create synthetic test data
+        np.random.seed(42)  # For reproducible results
+        image_data = np.random.poisson(100, (50, 50)).astype(float)  # Small test image
+        total_mask = np.random.choice([True, False], (50, 50), p=[0.8, 0.2])  # 20% valid pixels
+        
+        # Mock experiment
+        experiment = Mock()
+        beam = Mock()
+        beam.get_wavelength.return_value = 1.0
+        beam.get_s0.return_value = [0, 0, -1]
+        experiment.beam = beam
+        
+        # Mock panel with lab coordinate calculation
+        panel = Mock()
+        def mock_get_lab_coord_batch(pixel_coords_flex):
+            """Mock the batch lab coordinate method."""
+            from dials.array_family import flex
+            lab_coords = flex.vec3_double()
+            for coord in pixel_coords_flex:
+                # Simple mock calculation: convert pixel to lab coordinate
+                lab_x = coord[0] * 0.172  # pixel size in mm
+                lab_y = coord[1] * 0.172
+                lab_z = 200.0  # detector distance
+                lab_coords.append((lab_x, lab_y, lab_z))
+            return lab_coords
+        
+        def mock_get_lab_coord_single(pixel_coord):
+            """Mock the single lab coordinate method."""
+            lab_x = pixel_coord[0] * 0.172
+            lab_y = pixel_coord[1] * 0.172
+            lab_z = 200.0
+            return [lab_x, lab_y, lab_z]
+        
+        panel.get_lab_coord = mock_get_lab_coord_batch
+        panel.get_pixel_lab_coord = mock_get_lab_coord_single
+        panel.get_pixel_size.return_value = (0.172, 0.172)
+        panel.get_fast_axis.return_value = [1, 0, 0]
+        panel.get_slow_axis.return_value = [0, 1, 0]
+        
+        detector = Mock()
+        detector.__getitem__ = Mock(return_value=panel)
+        detector.__len__ = Mock(return_value=1)
+        experiment.detector = detector
+        experiment.crystal = Mock()
+        experiment.goniometer = None
+        
+        # Create test config
+        config = ExtractionConfig(
+            gain=1.0,
+            cell_length_tol=0.01,
+            cell_angle_tol=0.1,
+            orient_tolerance_deg=1.0,
+            q_consistency_tolerance_angstrom_inv=0.01,
+            pixel_step=2,  # Use step=2 to reduce test size
+            lp_correction_enabled=True,
+            plot_diagnostics=False,
+            verbose=False,
+            air_temperature_k=293.15,
+            air_pressure_atm=1.0,
         )
+        
+        # Mock DIALS corrections to return predictable results
+        with patch("dials.algorithms.integration.Corrections") as mock_corrections_class:
+            mock_corrections_obj = Mock()
+            mock_corrections_class.return_value = mock_corrections_obj
+            
+            # Mock corrections that scale with array size
+            def mock_lp(s1_flex):
+                return [0.8] * len(s1_flex)
+            
+            def mock_qe(s1_flex, panel_flex):
+                return [0.9] * len(s1_flex)
+            
+            mock_corrections_obj.lp = mock_lp
+            mock_corrections_obj.qe = mock_qe
+            
+            # Run both implementations
+            try:
+                vectorized_results = extractor._process_pixels_vectorized(
+                    experiment, image_data, total_mask, config
+                )
+                iterative_results = extractor._process_pixels_iterative(
+                    experiment, image_data, total_mask, config
+                )
+                
+                # Compare results
+                vec_q, vec_i, vec_s = vectorized_results[:3]
+                iter_q, iter_i, iter_s = iterative_results[:3]
+                
+                # Check that we got results
+                assert len(vec_q) > 0, "Vectorized implementation should return some results"
+                assert len(iter_q) > 0, "Iterative implementation should return some results"
+                
+                # Number of results should be identical
+                assert len(vec_q) == len(iter_q), f"Result count mismatch: vectorized={len(vec_q)}, iterative={len(iter_q)}"
+                
+                # Results should be numerically identical (within tolerance)
+                np.testing.assert_allclose(vec_q, iter_q, rtol=1e-6, atol=1e-9, 
+                                         err_msg="Q-vectors should be identical between implementations")
+                np.testing.assert_allclose(vec_i, iter_i, rtol=1e-6, atol=1e-9,
+                                         err_msg="Intensities should be identical between implementations")
+                np.testing.assert_allclose(vec_s, iter_s, rtol=1e-6, atol=1e-9,
+                                         err_msg="Sigmas should be identical between implementations")
+                
+                print(f"Correctness test passed: {len(vec_q)} pixels processed identically by both implementations")
+                
+            except Exception as e:
+                pytest.fail(f"Correctness test failed: {e}")
 
-    def test_performance_with_vectorized_operations(self):
-        """Test that vectorized operations provide acceptable performance."""
-        # This would test the performance improvements from vectorization
-        # For now, it's a placeholder for future implementation
-        pytest.skip("Performance test - implement when optimization is complete")
+    @pytest.mark.slow
+    def test_vectorized_performance_improvement(self):
+        """Test that vectorized processing provides significant performance improvement."""
+        import time
+        from unittest.mock import Mock, patch
+        
+        extractor = DataExtractor()
+        
+        # Create larger test data for performance measurement
+        np.random.seed(42)
+        large_image = np.random.poisson(100, (200, 200)).astype(float)  # Larger test image
+        large_mask = np.random.choice([True, False], (200, 200), p=[0.9, 0.1])  # 10% valid pixels
+        
+        # Mock experiment (same setup as correctness test)
+        experiment = Mock()
+        beam = Mock()
+        beam.get_wavelength.return_value = 1.0
+        beam.get_s0.return_value = [0, 0, -1]
+        experiment.beam = beam
+        
+        # Mock panel
+        panel = Mock()
+        def mock_get_lab_coord_batch(pixel_coords_flex):
+            from dials.array_family import flex
+            lab_coords = flex.vec3_double()
+            for coord in pixel_coords_flex:
+                lab_x = coord[0] * 0.172
+                lab_y = coord[1] * 0.172
+                lab_z = 200.0
+                lab_coords.append((lab_x, lab_y, lab_z))
+            return lab_coords
+        
+        def mock_get_lab_coord_single(pixel_coord):
+            lab_x = pixel_coord[0] * 0.172
+            lab_y = pixel_coord[1] * 0.172
+            lab_z = 200.0
+            return [lab_x, lab_y, lab_z]
+        
+        panel.get_lab_coord = mock_get_lab_coord_batch
+        panel.get_pixel_lab_coord = mock_get_lab_coord_single
+        panel.get_pixel_size.return_value = (0.172, 0.172)
+        panel.get_fast_axis.return_value = [1, 0, 0]
+        panel.get_slow_axis.return_value = [0, 1, 0]
+        
+        detector = Mock()
+        detector.__getitem__ = Mock(return_value=panel)
+        detector.__len__ = Mock(return_value=1)
+        experiment.detector = detector
+        experiment.crystal = Mock()
+        experiment.goniometer = None
+        
+        # Create performance test config
+        config = ExtractionConfig(
+            gain=1.0,
+            cell_length_tol=0.01,
+            cell_angle_tol=0.1,
+            orient_tolerance_deg=1.0,
+            q_consistency_tolerance_angstrom_inv=0.01,
+            pixel_step=3,  # Use step=3 for reasonable test size
+            lp_correction_enabled=True,
+            plot_diagnostics=False,
+            verbose=False,
+            air_temperature_k=293.15,
+            air_pressure_atm=1.0,
+        )
+        
+        # Mock DIALS corrections
+        with patch("dials.algorithms.integration.Corrections") as mock_corrections_class:
+            mock_corrections_obj = Mock()
+            mock_corrections_class.return_value = mock_corrections_obj
+            
+            def mock_lp(s1_flex):
+                return [0.8] * len(s1_flex)
+            
+            def mock_qe(s1_flex, panel_flex):
+                return [0.9] * len(s1_flex)
+            
+            mock_corrections_obj.lp = mock_lp
+            mock_corrections_obj.qe = mock_qe
+            
+            # Measure iterative approach on subset to avoid timeout
+            subset_size = min(50, large_image.shape[0])
+            subset_image = large_image[:subset_size, :subset_size]
+            subset_mask = large_mask[:subset_size, :subset_size]
+            
+            start_time = time.perf_counter()
+            iterative_results = extractor._process_pixels_iterative(
+                experiment, subset_image, subset_mask, config
+            )
+            iterative_time = time.perf_counter() - start_time
+            
+            # Measure vectorized approach on full data
+            start_time = time.perf_counter()
+            vectorized_results = extractor._process_pixels_vectorized(
+                experiment, large_image, large_mask, config
+            )
+            vectorized_time = time.perf_counter() - start_time
+            
+            # Calculate performance metrics
+            iter_pixels = len(iterative_results[0])
+            vec_pixels = len(vectorized_results[0])
+            
+            # Calculate normalized speedup (accounting for different data sizes)
+            size_ratio = (large_image.size) / (subset_image.size)
+            normalized_speedup = (iterative_time * size_ratio) / vectorized_time
+            
+            print(f"Performance test results:")
+            print(f"  Iterative approach: {iter_pixels} pixels in {iterative_time:.4f}s")
+            print(f"  Vectorized approach: {vec_pixels} pixels in {vectorized_time:.4f}s")
+            print(f"  Data size ratio: {size_ratio:.1f}x")
+            print(f"  Normalized speedup: {normalized_speedup:.1f}x")
+            
+            # Assert significant performance improvement
+            expected_min_speedup = 5  # Expect at least 5x speedup from vectorization
+            assert normalized_speedup > expected_min_speedup, \
+                f"Vectorized implementation only {normalized_speedup:.1f}x faster, expected >{expected_min_speedup}x"

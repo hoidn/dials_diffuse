@@ -459,10 +459,10 @@ class SmoothScaleComponent(ScaleComponentBase):
         self.coord_max = flex.max(coordinate_values)
         self.coord_range = (self.coord_min, self.coord_max)
         
-        # Create Gaussian smoother
+        # Create Gaussian smoother using correct DIALS API
         self.smoother = GaussianSmoother1D(
-            n_parameters=n_control_points,
-            value_range=self.coord_range
+            self.coord_range,  # range as tuple (min, max)
+            n_control_points   # number of control points directly
         )
         
         # Initialize control point values
@@ -482,26 +482,18 @@ class SmoothScaleComponent(ScaleComponentBase):
         # Get current parameter values
         control_values = self.parameters
         
-        # Set control point values in smoother
-        self.smoother.set_parameters(control_values)
+        # Use correct DIALS GaussianSmoother1D API for multi-point evaluation
+        # The smoother takes parameter values and coordinates to evaluate
+        values, weights, _ = self.smoother.multi_value_weight(
+            self.coordinate_values,  # x coordinates to evaluate at
+            control_values           # parameter values for the smoother
+        )
         
-        # Evaluate smoother at coordinate positions
-        scales, errors = self.smoother.value_error_for_location(self.coordinate_values)
+        scales = values
         
-        # Calculate derivatives: ∂scale_i/∂control_j
-        derivatives = flex.double(flex.grid(len(scales), self.n_params), 0.0)
-        
-        # Use analytical derivatives from smoother weight matrices
-        # DIALS GaussianSmoother classes provide analytical derivatives through weight matrices
-        # This is more accurate and efficient than finite differences
-        for i, coord in enumerate(self.coordinate_values):
-            # Get analytical weights and values at coordinate location
-            weight_result = self.smoother.value_weight(coord)
-            weights = weight_result.get_weight()  # Weight matrix for this coordinate
-            
-            # Weights provide direct derivatives: ∂scale_i/∂control_j = weight[i,j]
-            for j in range(self.n_params):
-                derivatives[i, j] = weights[j]  # Direct analytical derivative
+        # The weights matrix provides analytical derivatives
+        # weights[i,j] = ∂scale_i/∂parameter_j
+        derivatives = weights
         
         return scales, derivatives
 ```
@@ -513,7 +505,8 @@ class SmoothScaleComponent(ScaleComponentBase):
 - **Memory Usage:** Large datasets with many parameters can consume significant memory during refinement
 - **Convergence:** Monitor refinement convergence carefully; poor initial guesses can lead to non-convergence
 - **Component Ordering:** The order of components in `_components` affects the final scaling calculation
-- **Analytical Derivatives:** GaussianSmoother classes provide analytical derivatives through weight matrices from `value_weight()` methods, eliminating the need for finite difference calculations
+- **GaussianSmoother1D API:** Constructor takes `(range_tuple, n_parameters)` directly, not keyword arguments. Use `multi_value_weight(x, values)` for batch evaluation
+- **Analytical Derivatives:** GaussianSmoother classes provide analytical derivatives through weight matrices from `multi_value_weight()` methods, eliminating the need for finite difference calculations
 
 **9. Integration with Diffuse Scattering Pipeline:**
 This framework enables implementation of Module 3.S.3 relative scaling by providing:

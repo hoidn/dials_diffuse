@@ -32,10 +32,11 @@ module src.diffusepipe.extraction {
         //    a. Compares unit cell parameters (lengths and angles) from the DIALS crystal model against the reference PDB, using `config.cell_length_tol` and `config.cell_angle_tol`.
         //    b. Compares crystal orientation from the DIALS crystal model against the reference PDB, using `config.orient_tolerance_deg`.
         //    c. If any consistency check fails, returns an `OperationOutcome` with status "FAILURE" and appropriate error message/code.
-        // 4. **Pixel Processing Loop (or equivalent vectorized operations):**
-        //    a. Iterates through each pixel of the image, respecting `config.pixel_step`.
-        //    b. Skips pixels that are set to true in the Bragg mask.
-        //    c. For each valid pixel:
+        // 4. **Pixel Processing (High-Performance Vectorized Implementation):**
+        //    Processing is performed using efficient, vectorized batch operations on all valid pixels simultaneously, avoiding slow per-pixel loops.
+        //    a. Identifies all unmasked pixels respecting `config.pixel_step` using vectorized coordinate generation and boolean masking.
+        //    b. Batch calculates lab coordinates for all valid pixels using DIALS vectorized API (`panel.get_lab_coord(flex.vec2_double)`).
+        //    c. For all valid pixels simultaneously:
         //       i. **Q-Vector Calculation:** Calculates the scattering vector `q` (components qx, qy, qz) for the pixel center using the DIALS `Experiment` geometry (detector panel, beam vector).
         //       ii. **Intensity & Initial Error:** Reads raw intensity $I_{raw}$. Applies `config.gain`. Initial sigma $\sigma_{raw} = \sqrt{I_{raw} \cdot \text{gain}}$ (assuming Poisson statistics).
         //       iii. **Corrections (and error propagation) using DIALS API and Custom Calculations:**
