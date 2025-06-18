@@ -10,7 +10,7 @@ import tempfile
 import pytest
 import numpy as np
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import sys
 
 # Add the scripts directory to the path for importing the script
@@ -183,7 +183,7 @@ class TestDataLoading:
 class TestPlotGeneration:
     """Test plot generation functions."""
 
-    @patch("matplotlib.pyplot.savefig")
+    @patch("matplotlib.figure.Figure.savefig")
     @patch("matplotlib.pyplot.close")
     def test_generate_grid_summary(
         self, mock_close, mock_savefig, synthetic_grid_definition
@@ -209,7 +209,7 @@ class TestPlotGeneration:
             mock_savefig.assert_called()
             mock_close.assert_called()
 
-    @patch("matplotlib.pyplot.savefig")
+    @patch("matplotlib.figure.Figure.savefig")
     @patch("matplotlib.pyplot.close")
     def test_generate_voxel_occupancy_plots(
         self, mock_close, mock_savefig, synthetic_voxel_data, synthetic_grid_definition
@@ -239,7 +239,7 @@ class TestPlotGeneration:
             # Check that plots were attempted to be saved
             assert mock_savefig.call_count >= 3  # At least slice plots + histogram
 
-    @patch("matplotlib.pyplot.savefig")
+    @patch("matplotlib.figure.Figure.savefig")
     @patch("matplotlib.pyplot.close")
     def test_generate_scaling_parameter_plots(
         self, mock_close, mock_savefig, synthetic_scaling_parameters
@@ -262,7 +262,7 @@ class TestPlotGeneration:
             # Check that plots were attempted to be saved
             mock_savefig.assert_called()
 
-    @patch("matplotlib.pyplot.savefig")
+    @patch("matplotlib.figure.Figure.savefig")
     @patch("matplotlib.pyplot.close")
     def test_generate_merged_voxel_plots(
         self, mock_close, mock_savefig, synthetic_voxel_data, synthetic_grid_definition
@@ -368,7 +368,7 @@ class TestErrorHandling:
 class TestEndToEndWorkflow:
     """Integration tests for end-to-end workflow."""
 
-    @patch("matplotlib.pyplot.savefig")
+    @patch("matplotlib.figure.Figure.savefig")
     @patch("matplotlib.pyplot.close")
     def test_full_diagnostic_workflow(
         self,

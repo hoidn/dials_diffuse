@@ -6,7 +6,7 @@ dials.generate_mask (Option A) and shoebox-based (Option B) approaches.
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 from diffusepipe.masking.bragg_mask_generator import (
     BraggMaskGenerator,
@@ -121,6 +121,7 @@ class TestBraggMaskGenerator:
 
         # Assert - Check that we got a valid flex.bool object
         from dials.array_family import flex
+
         assert result is not None
         assert len(result) == 1
         assert isinstance(result[0], flex.bool)
@@ -145,6 +146,7 @@ class TestBraggMaskGenerator:
 
         # Assert - Check that we got a valid flex.bool object
         from dials.array_family import flex
+
         assert result is not None
         assert len(result) == 1
         assert isinstance(result[0], flex.bool)

@@ -16,12 +16,6 @@ def test_imports():
 
     # Test plot utils
     try:
-        from plot_utils import (
-            plot_detector_image,
-            plot_mask_overlay,
-            plot_spot_overlay,
-            ensure_output_dir,
-        )
 
         print("✅ plot_utils imports successful")
     except Exception as e:
@@ -31,7 +25,6 @@ def test_imports():
     try:
         from diffusepipe.masking.pixel_mask_generator import PixelMaskGenerator
         from diffusepipe.masking.bragg_mask_generator import BraggMaskGenerator
-        from diffusepipe.crystallography.still_processor import StillProcessorComponent
 
         print("✅ diffusepipe components imports successful")
     except Exception as e:

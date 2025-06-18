@@ -12,7 +12,7 @@ import argparse
 import logging
 import json
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 # Add project src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
@@ -314,13 +314,13 @@ def create_pixel_mask_visualizations(
 
             # Configuration summary
             f.write("Configuration used:\n")
-            f.write(f"  Static mask parameters:\n")
+            f.write("  Static mask parameters:\n")
             f.write(f"    Beamstop: {static_params.beamstop}\n")
             f.write(
                 f"    Untrusted rectangles: {len(static_params.untrusted_rects) if static_params.untrusted_rects else 0}\n"
             )
             f.write(f"    Untrusted panels: {static_params.untrusted_panels}\n")
-            f.write(f"  Dynamic mask parameters:\n")
+            f.write("  Dynamic mask parameters:\n")
             f.write(f"    Hot pixel threshold: {dynamic_params.hot_pixel_thresh}\n")
             f.write(
                 f"    Negative pixel tolerance: {dynamic_params.negative_pixel_tolerance}\n"
@@ -453,7 +453,7 @@ Examples:
         )
 
         if success:
-            logger.info(f"✅ Pixel mask visual check completed successfully!")
+            logger.info("✅ Pixel mask visual check completed successfully!")
             logger.info(f"📁 Check output files in: {args.output_dir}")
             return 0
         else:

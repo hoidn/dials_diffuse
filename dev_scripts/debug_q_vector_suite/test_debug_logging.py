@@ -18,9 +18,6 @@ logging.basicConfig(
 from diffusepipe.crystallography.still_processing_and_validation import (
     StillProcessorAndValidatorComponent,
 )
-from diffusepipe.adapters.dials_sequence_process_adapter import (
-    DIALSSequenceProcessAdapter,
-)
 
 print("=" * 60)
 print("STEP 1: CONFIRMING PATCHED CODE PATH IS EXECUTED")

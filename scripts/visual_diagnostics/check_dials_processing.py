@@ -11,7 +11,7 @@ import sys
 import argparse
 import logging
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 
 # Add project src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
@@ -224,7 +224,7 @@ def create_dials_visualizations(
 
             if reflections.has_key("partiality"):
                 partialities = reflections["partiality"]
-                f.write(f"\nPartiality statistics:\n")
+                f.write("\nPartiality statistics:\n")
                 f.write(f"  Mean: {partialities.mean():.3f}\n")
                 f.write(f"  Min: {partialities.min():.3f}\n")
                 f.write(f"  Max: {partialities.max():.3f}\n")
@@ -319,7 +319,7 @@ Examples:
         )
 
         if success:
-            logger.info(f"✅ DIALS processing visual check completed successfully!")
+            logger.info("✅ DIALS processing visual check completed successfully!")
             logger.info(f"📁 Check output files in: {args.output_dir}")
             return 0
         else:

@@ -12,7 +12,7 @@ import argparse
 import logging
 import json
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 # Add project src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
@@ -336,7 +336,7 @@ def create_total_mask_visualizations(
 
             # Reflection statistics
             if reflections:
-                f.write(f"Reflection statistics:\n")
+                f.write("Reflection statistics:\n")
                 f.write(f"  Total reflections: {len(reflections)}\n")
 
                 if reflections.has_key("partiality"):
@@ -440,7 +440,7 @@ Examples:
 
     try:
         # Load DIALS data
-        logger.info(f"Loading DIALS data...")
+        logger.info("Loading DIALS data...")
         image_set, experiments, reflections = load_dials_data(
             args.raw_image, args.expt, args.refl
         )
@@ -472,7 +472,7 @@ Examples:
         )
 
         if success:
-            logger.info(f"✅ Total mask visual check completed successfully!")
+            logger.info("✅ Total mask visual check completed successfully!")
             logger.info(f"📁 Check output files in: {args.output_dir}")
 
             if not args.use_option_b:

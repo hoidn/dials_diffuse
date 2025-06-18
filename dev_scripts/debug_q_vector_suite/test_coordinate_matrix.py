@@ -62,7 +62,7 @@ for name, C in test_cases:
         print(f"    {trans_name}: {q_array} (mag: {np.linalg.norm(q_array):.4f})")
 
 # Test what the built-in DIALS method gives us (if available)
-print(f"\nBuilt-in DIALS method:")
+print("\nBuilt-in DIALS method:")
 try:
     q_dials = experiment.crystal.hkl_to_reciprocal_space_vec(hkl)
     q_dials_array = np.array(q_dials.elems)

@@ -5,7 +5,12 @@ prepare a self contained 'debug payload' file containing:
 - all files that might be the source of the bug and / or relevant to debugging 
 - if appropriate, a description of which debugging approaches we already tried, and why it didn't work
 
-Instead of including the literal contents of each file that you decided to include, specify them with 
+Instead of including the literal contents of each file that you decided to include, do the following for each file:
+
+if only some portions of the file are relevant to the task, literally quote those sections and replace the removed 
+sections by placeholders saying that they've been removed. 
+
+If the whole file is relevant, don't literally include it. instead specify it with 
 jinja style template syntax:
 
 {rel/path/to/file.py}

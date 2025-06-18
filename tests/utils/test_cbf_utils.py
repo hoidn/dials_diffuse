@@ -5,7 +5,6 @@ Test suite for CBF utilities, specifically CBF data type detection.
 import pytest
 import tempfile
 import os
-from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from diffusepipe.utils.cbf_utils import (

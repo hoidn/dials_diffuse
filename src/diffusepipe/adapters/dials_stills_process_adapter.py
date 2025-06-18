@@ -75,7 +75,7 @@ class DIALSStillsProcessAdapter:
             # Generate PHIL parameters for true stills processing
             logger.info("Generating PHIL parameters for stills processing...")
             self._extracted_params = self._generate_phil_parameters(
-                config, output_dir_final
+                config, base_expt_path, output_dir_final
             )
             log_messages.append(f"Generated PHIL parameters for {image_path}")
 
@@ -127,15 +127,15 @@ class DIALSStillsProcessAdapter:
 
             log_messages.append("Completed DIALS stills processing")
 
-            # Extract single experiment and reflections
-            experiment = self._extract_experiment(integrated_experiments)
+            # Extract experiments and reflections (keep as ExperimentList for orchestrator)
+            experiments = integrated_experiments  # Keep as ExperimentList
             reflections = self._extract_reflections(integrated_reflections)
 
             # Validate partiality column
             self._validate_partiality(reflections)
             log_messages.append("Validated partiality data")
 
-            return experiment, reflections, True, "\n".join(log_messages)
+            return experiments, reflections, True, "\n".join(log_messages)
 
         except Exception as e:
             error_msg = f"DIALS stills processing failed: {e}"
@@ -150,7 +150,10 @@ class DIALSStillsProcessAdapter:
                 raise DIALSError(error_msg) from e
 
     def _generate_phil_parameters(
-        self, config: DIALSStillsProcessConfig, output_dir_final: Optional[str] = None
+        self,
+        config: DIALSStillsProcessConfig,
+        base_expt_path: Optional[str] = None,
+        output_dir_final: Optional[str] = None,
     ) -> Any:
         """
         Generate PHIL parameters for true stills processing.
@@ -160,6 +163,8 @@ class DIALSStillsProcessAdapter:
 
         Args:
             config: Configuration object containing DIALS parameters
+            base_expt_path: Optional path to reference experiment for crystal models
+            output_dir_final: Optional output directory path
 
         Returns:
             Extracted PHIL parameter object for dials.stills_process
@@ -216,6 +221,43 @@ class DIALSStillsProcessAdapter:
                     raise ConfigurationError(
                         f"Invalid space group string: {config.known_space_group} - {e}"
                     )
+
+            # Add reference crystal models if provided
+            if base_expt_path and Path(base_expt_path).exists():
+                logger.info(f"Loading reference crystal models from: {base_expt_path}")
+                try:
+                    from dxtbx.model.experiment_list import ExperimentListFactory
+
+                    reference_experiments = ExperimentListFactory.from_json_file(
+                        base_expt_path
+                    )
+                    if reference_experiments and len(reference_experiments) > 0:
+                        # Extract crystal models from reference experiments
+                        crystal_models = [
+                            exp.crystal
+                            for exp in reference_experiments
+                            if exp.crystal is not None
+                        ]
+                        if crystal_models:
+                            params.indexing.known_symmetry.crystal_models = (
+                                crystal_models
+                            )
+                            logger.info(
+                                f"Added {len(crystal_models)} reference crystal models for constrained indexing"
+                            )
+                        else:
+                            logger.warning(
+                                f"No crystal models found in reference experiment: {base_expt_path}"
+                            )
+                    else:
+                        logger.warning(
+                            f"Could not load reference experiments from: {base_expt_path}"
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to load reference crystal models from {base_expt_path}: {e}"
+                    )
+                    # Continue without reference models rather than failing
 
             if config.spotfinder_threshold_algorithm:
                 params.spotfinder.threshold.algorithm = (

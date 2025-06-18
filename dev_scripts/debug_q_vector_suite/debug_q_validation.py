@@ -58,7 +58,7 @@ def debug_q_validation():
         reflections = outcome.output_artifacts.get("reflections")
 
         if experiment and reflections:
-            print(f"\n3. Direct Q-vector validation test:")
+            print("\n3. Direct Q-vector validation test:")
 
             # Create a validator and test directly
             validator = processor.validator
@@ -71,12 +71,12 @@ def debug_q_validation():
                 experiment=experiment, reflections=reflections, tolerance=tolerance
             )
 
-            print(f"\n4. Validation Results:")
+            print("\n4. Validation Results:")
             print(f"   Passed: {passed}")
             print(f"   Stats: {stats}")
 
             # Also inspect the reflection table directly
-            print(f"\n5. Reflection Table Inspection:")
+            print("\n5. Reflection Table Inspection:")
             try:
                 print(f"   Type: {type(reflections)}")
                 print(f"   Length: {len(reflections)}")

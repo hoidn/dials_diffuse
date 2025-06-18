@@ -21,12 +21,9 @@ from diffusepipe.crystallography.still_processing_and_validation import (
 )
 from diffusepipe.masking.pixel_mask_generator import (
     PixelMaskGenerator,
-    create_default_static_params,
-    create_default_dynamic_params,
 )
 from diffusepipe.masking.bragg_mask_generator import (
     BraggMaskGenerator,
-    create_default_bragg_mask_config,
 )
 
 # Set up logging
@@ -77,7 +74,7 @@ def demo_still_processing_with_validation(
         extraction_config = create_default_extraction_config()
 
         print(f"   ✓ DIALS config: partiality={dials_config.calculate_partiality}")
-        print(f"   ✓ Validation tolerances:")
+        print("   ✓ Validation tolerances:")
         print(f"     - Cell length: {extraction_config.cell_length_tol * 100:.1f}%")
         print(f"     - Cell angle: {extraction_config.cell_angle_tol}°")
         print(f"     - Orientation: {extraction_config.orient_tolerance_deg}°")
@@ -114,7 +111,7 @@ def demo_still_processing_with_validation(
         )
 
         # Step 4: Analyze results
-        print(f"\n4. Processing Results:")
+        print("\n4. Processing Results:")
         print(f"   Status: {outcome.status}")
         print(f"   Message: {outcome.message}")
 
@@ -132,7 +129,7 @@ def demo_still_processing_with_validation(
 
         # Step 5: Demonstrate mask generation
         if outcome.status in ["SUCCESS", "FAILURE_GEOMETRY_VALIDATION"]:
-            print(f"\n5. Demonstrating mask generation...")
+            print("\n5. Demonstrating mask generation...")
             demo_mask_generation(outcome, output_path)
 
         print(f"\n📁 Check output files in: {output_path}")
@@ -275,7 +272,7 @@ def analyze_validation_failure(outcome, output_path: Path):
     failures = []
     if validation_metrics.get("q_consistency_passed") is False:
         failures.append("Q-vector consistency")
-        print(f"     ❌ Q-consistency failed:")
+        print("     ❌ Q-consistency failed:")
         mean_delta = validation_metrics.get("mean_delta_q_mag")
         max_delta = validation_metrics.get("max_delta_q_mag")
         mean_str = f"{mean_delta:.4f}" if mean_delta is not None else "N/A"
@@ -285,14 +282,14 @@ def analyze_validation_failure(outcome, output_path: Path):
 
     if validation_metrics.get("pdb_cell_passed") is False:
         failures.append("PDB cell parameters")
-        print(f"     ❌ PDB cell parameters failed")
+        print("     ❌ PDB cell parameters failed")
 
     if validation_metrics.get("pdb_orientation_passed") is False:
         failures.append("PDB orientation")
-        print(f"     ❌ PDB orientation failed")
+        print("     ❌ PDB orientation failed")
 
     print(f"   🔧 Failed checks: {', '.join(failures) if failures else 'Unknown'}")
-    print(f"   💡 This still should be excluded from subsequent processing")
+    print("   💡 This still should be excluded from subsequent processing")
 
     # Save failure report
     failure_path = output_path / "validation_failure_report.txt"
@@ -321,7 +318,7 @@ def analyze_processing_failure(outcome, output_path: Path):
     if outcome.output_artifacts and "log_messages" in outcome.output_artifacts:
         print(f"     DIALS Log: {outcome.output_artifacts['log_messages']}")
 
-    print(f"   💡 Check DIALS configuration and input image quality")
+    print("   💡 Check DIALS configuration and input image quality")
 
     # Save processing failure report
     failure_path = output_path / "processing_failure_report.txt"

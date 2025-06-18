@@ -17,14 +17,14 @@ logger = logging.getLogger(__name__)
 
 class CBFUtils:
     """Utilities for working with CBF files."""
-    
+
     def get_angle_increment(self, image_path: str) -> Optional[float]:
         """
         Extract the Angle_increment value from a CBF file header.
-        
+
         Args:
             image_path: Path to the CBF file
-            
+
         Returns:
             Angle increment in degrees, or None if not found
         """

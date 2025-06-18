@@ -4,7 +4,6 @@ Debug script to compare manual DIALS workflow vs stills_process
 """
 
 import tempfile
-import shutil
 import subprocess
 import sys
 from pathlib import Path

@@ -282,43 +282,44 @@ def extract_pdb_symmetry(pdb_path: str) -> tuple[Optional[str], Optional[str]]:
         return None, None
 
 
-
 def run_phase1_sequence_processing(
     args: argparse.Namespace, output_dir: Path
 ) -> Tuple[Path, Path, List[object]]:
     """
     Run Phase 1 DIALS processing as a single sequence and generate per-image masks.
-    
+
     This function implements true sequence processing where all images are processed
     together as a single cohesive dataset, then individual masks are generated for
     each image using the consistent scan-varying model.
-    
+
     Args:
         args: Command line arguments containing CBF image paths and configuration
         output_dir: Base output directory for sequence processing results
-        
+
     Returns:
         Tuple of (composite_expt_path, composite_refl_path, per_image_mask_list)
     """
     logger.info("=== Phase 1: True Sequence Processing ===")
-    
+
     # Extract known symmetry from PDB if provided
     known_unit_cell = None
     known_space_group = None
     if args.pdb_path:
         known_unit_cell, known_space_group = extract_pdb_symmetry(args.pdb_path)
-    
+
     # Create sequence processing output directory
     sequence_output_dir = output_dir / "sequence_processing"
     sequence_output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Import the adapter
-    from diffusepipe.adapters.dials_sequence_process_adapter import DIALSSequenceProcessAdapter
-    
+    from diffusepipe.adapters.dials_sequence_process_adapter import (
+        DIALSSequenceProcessAdapter,
+    )
+
     try:
         # Instantiate the sequence adapter
         sequence_adapter = DIALSSequenceProcessAdapter()
-        
+
         # Create DIALS configuration with known symmetry
         dials_config = create_default_config(
             known_unit_cell=known_unit_cell, known_space_group=known_space_group
@@ -327,44 +328,48 @@ def run_phase1_sequence_processing(
             dials_config.stills_process_phil_path = args.dials_phil_path
         if args.use_bragg_mask_option_b:
             dials_config.output_shoeboxes = True
-            
+
         # Process all images as a single sequence
         logger.info(f"Processing {len(args.cbf_image_paths)} images as sequence")
-        experiments, reflections, success, log_messages = sequence_adapter.process_sequence(
-            image_paths=args.cbf_image_paths,
-            config=dials_config,
-            output_dir_final=str(sequence_output_dir),
+        experiments, reflections, success, log_messages = (
+            sequence_adapter.process_sequence(
+                image_paths=args.cbf_image_paths,
+                config=dials_config,
+                output_dir_final=str(sequence_output_dir),
+            )
         )
-        
+
         if not success:
             raise RuntimeError(f"Sequence processing failed: {log_messages}")
-            
+
         # Get the composite experiment and reflection file paths
         composite_expt_path = sequence_output_dir / "indexed_refined_detector.expt"
         composite_refl_path = sequence_output_dir / "indexed_refined_detector.refl"
-        
+
         # Verify files exist
         if not composite_expt_path.exists() or not composite_refl_path.exists():
             raise RuntimeError("Expected sequence processing output files not found")
-            
+
         logger.info("Sequence processing completed successfully")
-        
+
         # Now generate per-image masks using the consistent model
         logger.info("Generating per-image masks from sequence model")
-        
+
         # Load the composite experiment and reflections
         from dxtbx.model.experiment_list import ExperimentListFactory
         from dials.array_family import flex
-        
-        experiments_list = ExperimentListFactory.from_json_file(str(composite_expt_path))
+
+        experiments_list = ExperimentListFactory.from_json_file(
+            str(composite_expt_path)
+        )
         all_reflections = flex.reflection_table.from_file(str(composite_refl_path))
-        
+
         # Generate global pixel mask once (using first detector)
         detector = experiments_list[0].detector
         imageset = ImageSetFactory.new(args.cbf_image_paths)[0]
-        
+
         pixel_generator = PixelMaskGenerator()
-        
+
         # Parse static mask configuration
         static_config = parse_json_config(args.static_mask_config, "static mask")
         if static_config:
@@ -374,10 +379,10 @@ def run_phase1_sequence_processing(
                     setattr(static_params, key, value)
         else:
             static_params = create_default_static_params()
-            
+
         # Use default dynamic parameters
         dynamic_params = create_default_dynamic_params()
-        
+
         # Generate combined pixel mask (once for all images)
         global_pixel_mask_tuple = pixel_generator.generate_combined_pixel_mask(
             detector=detector,
@@ -385,35 +390,43 @@ def run_phase1_sequence_processing(
             representative_images=[imageset],
             dynamic_params=dynamic_params,
         )
-        
+
         # Save global pixel mask
         global_pixel_mask_path = sequence_output_dir / "global_pixel_mask.pickle"
         with open(global_pixel_mask_path, "wb") as f:
             pickle.dump(global_pixel_mask_tuple, f)
-        
+
         # Generate per-image masks
         per_image_mask_objects = []
         bragg_generator = BraggMaskGenerator()
-        
+
         # Parse Bragg mask configuration
         bragg_config_overrides = parse_json_config(args.bragg_mask_config, "Bragg mask")
         bragg_config = create_default_bragg_mask_config()
         bragg_config.update(bragg_config_overrides)
-        
+
         for i, cbf_path in enumerate(args.cbf_image_paths):
-            logger.info(f"Generating mask for image {i+1}/{len(args.cbf_image_paths)}: {Path(cbf_path).name}")
-            
+            logger.info(
+                f"Generating mask for image {i+1}/{len(args.cbf_image_paths)}: {Path(cbf_path).name}"
+            )
+
             # Create image-specific output directory for masks
             cbf_path_obj = Path(cbf_path)
             image_output_dir = output_dir / f"still_{i:03d}_{cbf_path_obj.stem}"
             image_output_dir.mkdir(parents=True, exist_ok=True)
-            
+
             # Filter reflections for this specific image
-            image_reflections = all_reflections.select(all_reflections['imageset_id'] == i)
-            
+            image_reflections = all_reflections.select(
+                all_reflections["imageset_id"] == i
+            )
+
             # Get the experiment for this image (should be same crystal model for all)
-            experiment = experiments_list[i] if i < len(experiments_list) else experiments_list[0]
-            
+            experiment = (
+                experiments_list[i]
+                if i < len(experiments_list)
+                else experiments_list[0]
+            )
+
             # Generate Bragg mask for this image
             if args.use_bragg_mask_option_b:
                 bragg_mask_tuple = bragg_generator.generate_bragg_mask_from_shoeboxes(
@@ -421,25 +434,27 @@ def run_phase1_sequence_processing(
                 )
             else:
                 bragg_mask_tuple = bragg_generator.generate_bragg_mask_from_spots(
-                    experiment=experiment, reflections=image_reflections, config=bragg_config
+                    experiment=experiment,
+                    reflections=image_reflections,
+                    config=bragg_config,
                 )
-            
+
             # Save individual Bragg mask
             bragg_mask_path = image_output_dir / "bragg_mask.pickle"
             with open(bragg_mask_path, "wb") as f:
                 pickle.dump(bragg_mask_tuple, f)
-            
+
             # Generate total diffuse mask for this image
             total_diffuse_mask_tuple = bragg_generator.get_total_mask_for_still(
                 bragg_mask=bragg_mask_tuple,
                 global_pixel_mask=global_pixel_mask_tuple,
             )
-            
+
             # Save total diffuse mask
             total_diffuse_mask_path = image_output_dir / "total_diffuse_mask.pickle"
             with open(total_diffuse_mask_path, "wb") as f:
                 pickle.dump(total_diffuse_mask_tuple, f)
-            
+
             # Store mask information
             mask_info = {
                 "image_index": i,
@@ -449,10 +464,10 @@ def run_phase1_sequence_processing(
                 "bragg_mask_path": bragg_mask_path,
             }
             per_image_mask_objects.append(mask_info)
-            
+
         logger.info("Per-image mask generation completed")
         return composite_expt_path, composite_refl_path, per_image_mask_objects
-        
+
     except Exception as e:
         logger.error(f"Sequence processing failed: {e}")
         raise
@@ -565,14 +580,14 @@ def _run_data_extraction_for_image(
 ) -> Dict[str, Any]:
     """
     Run Phase 2 data extraction for a single image using the shared experiment model.
-    
+
     Args:
         args: Command line arguments
         cbf_path: Path to the CBF image file
         image_output_dir: Output directory for this specific image
         composite_expt_file: Path to the shared experiment file from sequence processing
         total_diffuse_mask_path: Path to the total diffuse mask for this image
-        
+
     Returns:
         Dictionary with Phase 2 results for this image
     """
@@ -618,7 +633,9 @@ def _run_data_extraction_for_image(
             logger.error(
                 f"Data extraction failed for {cbf_path}: {data_extractor_outcome.status}"
             )
-            raise RuntimeError(f"Data extraction failed: {data_extractor_outcome.status}")
+            raise RuntimeError(
+                f"Data extraction failed: {data_extractor_outcome.status}"
+            )
 
         # Store results
         result = {
@@ -638,6 +655,100 @@ def _run_data_extraction_for_image(
         raise
 
 
+def _run_phase2_visual_diagnostics(
+    args: argparse.Namespace,
+    image_output_dir: Path,
+    cbf_path: str,
+    expt_file: Path,
+    total_mask_path: Path,
+    npz_file: Path,
+) -> None:
+    """
+    Run per-image Phase 2 visual diagnostics using check_diffuse_extraction.py.
+
+    Args:
+        args: Command line arguments
+        image_output_dir: Output directory for this specific image
+        cbf_path: Path to the CBF image file
+        expt_file: Path to the experiment file (shared from sequence processing)
+        total_mask_path: Path to the total diffuse mask for this image
+        npz_file: Path to the extracted NPZ data file
+    """
+    logger.info(f"Generating Phase 2 visual diagnostics for {Path(cbf_path).name}")
+
+    # Create Phase 2 diagnostics subdirectory
+    phase2_diagnostics_dir = image_output_dir / "phase2_diagnostics"
+    phase2_diagnostics_dir.mkdir(parents=True, exist_ok=True)
+
+    # Get the path to the check_diffuse_extraction.py script
+    script_path = (
+        Path(__file__).resolve().parent.parent
+        / "visual_diagnostics"
+        / "check_diffuse_extraction.py"
+    )
+
+    # Construct the command
+    cmd = [
+        "python",
+        str(script_path),
+        "--raw-image",
+        cbf_path,
+        "--expt",
+        str(expt_file),
+        "--total-mask",
+        str(total_mask_path),
+        "--npz-file",
+        str(npz_file),
+        "--output-dir",
+        str(phase2_diagnostics_dir),
+    ]
+
+    # Add verbose flag if requested
+    if args.verbose:
+        cmd.append("--verbose")
+
+    logger.info(f"Running Phase 2 diagnostics: {' '.join(cmd)}")
+
+    # Execute the command
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=str(Path(__file__).resolve().parent.parent.parent),  # Project root
+        )
+
+        # Log results
+        if result.returncode == 0:
+            logger.info(
+                f"Phase 2 diagnostics completed successfully for {Path(cbf_path).name}"
+            )
+        else:
+            logger.error(
+                f"Phase 2 diagnostics failed for {Path(cbf_path).name} with return code: {result.returncode}"
+            )
+
+        if result.stdout:
+            logger.debug("Phase 2 diagnostics stdout:")
+            for line in result.stdout.strip().split("\n"):
+                logger.debug(f"  {line}")
+
+        if result.stderr:
+            logger.warning("Phase 2 diagnostics stderr:")
+            for line in result.stderr.strip().split("\n"):
+                logger.warning(f"  {line}")
+
+        if result.returncode != 0:
+            logger.warning(
+                f"Phase 2 diagnostics failed for {Path(cbf_path).name}, but continuing..."
+            )
+
+    except Exception as e:
+        logger.error(
+            f"Failed to run Phase 2 diagnostics for {Path(cbf_path).name}: {e}"
+        )
+        logger.warning("Continuing without Phase 2 diagnostics...")
 
 
 def run_phase3_voxelization_and_scaling(
@@ -803,6 +914,7 @@ def run_phase3_voxelization_and_scaling(
 
     # Phase 2C: Relative Scaling
     logger.info("Performing relative scaling...")
+    logger.info(f"Processing {len(binned_data)} voxels with scaling algorithm...")
 
     # Parse scaling configuration
     if args.relative_scaling_config_json:
@@ -816,8 +928,14 @@ def run_phase3_voxelization_and_scaling(
     # Instantiate scaling model
     scaling_model = DiffuseScalingModel(scaling_config)
 
-    # Refine scaling parameters
-    refinement_config = {"max_iterations": 10, "convergence_tolerance": 1e-4}
+    # Refine scaling parameters with reduced iterations for large datasets
+    max_iterations = 3 if len(binned_data) > 50000 else 10
+    refinement_config = {
+        "max_iterations": max_iterations,
+        "convergence_tolerance": 1e-4,
+    }
+
+    logger.info(f"Running scaling refinement with max_iterations={max_iterations}")
 
     refined_params, stats = scaling_model.refine_parameters(
         binned_data, {}, refinement_config  # Empty bragg reflections for now
@@ -826,22 +944,22 @@ def run_phase3_voxelization_and_scaling(
     # Create correctly structured dictionary for diagnostic script
     scaling_params_to_save = {
         "refined_parameters": refined_params,
-        "refinement_statistics": stats
+        "refinement_statistics": stats,
     }
-    
+
     # Extract and add resolution smoother data if available
     model_info = scaling_model.get_model_info()
-    if 'resolution' in model_info.get('components', {}):
-        resolution_component = model_info['components']['resolution']
-        control_point_values = resolution_component.get('control_point_values', [])
+    if "resolution" in model_info.get("components", {}):
+        resolution_component = model_info["components"]["resolution"]
+        control_point_values = resolution_component.get("control_point_values", [])
         scaling_params_to_save["resolution_smoother"] = {
             "enabled": True,
-            "control_points": control_point_values
+            "control_points": control_point_values,
         }
     else:
         scaling_params_to_save["resolution_smoother"] = {
             "enabled": False,
-            "control_points": []
+            "control_points": [],
         }
 
     scaling_params_path = output_dir / "refined_scaling_model_params.json"
@@ -1017,7 +1135,9 @@ def main():
 
     try:
         # Phase 1: True Sequence Processing
-        composite_expt_path, composite_refl_path, per_image_masks = run_phase1_sequence_processing(args, output_dir)
+        composite_expt_path, composite_refl_path, per_image_masks = (
+            run_phase1_sequence_processing(args, output_dir)
+        )
 
         logger.info(f"Sequence processing completed with {len(per_image_masks)} images")
 
@@ -1025,7 +1145,7 @@ def main():
         phase2_results = []
         for i, cbf_path in enumerate(args.cbf_image_paths):
             mask_info = per_image_masks[i]
-            
+
             # Extract data for this image using the shared experiment model
             phase2_result = _run_data_extraction_for_image(
                 args=args,
@@ -1034,15 +1154,27 @@ def main():
                 composite_expt_file=composite_expt_path,
                 total_diffuse_mask_path=mask_info["total_diffuse_mask_path"],
             )
-            
+
             # Add mask information to the result
-            phase2_result.update({
-                "pixel_mask_path": None,  # Not saved individually in new flow
-                "bragg_mask_path": mask_info["bragg_mask_path"],
-                "refl_file": composite_refl_path,  # Shared reflection file
-            })
-            
+            phase2_result.update(
+                {
+                    "pixel_mask_path": None,  # Not saved individually in new flow
+                    "bragg_mask_path": mask_info["bragg_mask_path"],
+                    "refl_file": composite_refl_path,  # Shared reflection file
+                }
+            )
+
             phase2_results.append(phase2_result)
+
+            # Generate Phase 2 visual diagnostics for this image
+            _run_phase2_visual_diagnostics(
+                args=args,
+                image_output_dir=mask_info["image_output_dir"],
+                cbf_path=cbf_path,
+                expt_file=composite_expt_path,
+                total_mask_path=mask_info["total_diffuse_mask_path"],
+                npz_file=phase2_result["corrected_npz_path"],
+            )
 
         if not phase2_results:
             logger.error("No images were successfully processed in Phase 2")

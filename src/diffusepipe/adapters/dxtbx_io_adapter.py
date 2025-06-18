@@ -58,7 +58,9 @@ class DXTBXIOAdapter:
 
             # Use top-level import (supports patching in tests)
             if ExperimentListFactory is None:
-                raise DIALSError("Failed to import DXTBX components: ExperimentListFactory not available")
+                raise DIALSError(
+                    "Failed to import DXTBX components: ExperimentListFactory not available"
+                )
 
             # Load the experiment list
             experiments = ExperimentListFactory.from_json_file(str(expt_path))
@@ -104,7 +106,9 @@ class DXTBXIOAdapter:
 
             # Use top-level import (supports patching in tests)
             if flex is None:
-                raise DIALSError("Failed to import DIALS components: flex not available")
+                raise DIALSError(
+                    "Failed to import DIALS components: flex not available"
+                )
 
             # Load the reflection table
             reflections = flex.reflection_table.from_file(str(refl_path))
@@ -150,7 +154,9 @@ class DXTBXIOAdapter:
 
             # Use top-level import (supports patching in tests)
             if ExperimentListDumper is None:
-                raise DIALSError("Failed to import DXTBX components: ExperimentListDumper not available")
+                raise DIALSError(
+                    "Failed to import DXTBX components: ExperimentListDumper not available"
+                )
 
             # Save the experiment list
             dumper = ExperimentListDumper(experiments)

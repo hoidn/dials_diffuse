@@ -62,7 +62,7 @@ def add_observations(self,
 
 **Behavior:**
 1. Transform `q_vectors_lab` to fractional HKL using `global_voxel_grid.A_avg_ref.inverse()`
-2. Map HKL to asymmetric unit using space group operations
+2. Map fractional HKL coordinates to the asymmetric unit using CCTBX symmetry operations
 3. Determine voxel indices using `global_voxel_grid.hkl_to_voxel_idx()`
 4. Store `(intensity, sigma, still_id, q_lab)` for each voxel
 5. Update accumulation statistics if using Welford's algorithm
@@ -191,6 +191,6 @@ def finalize(self) -> None
 - Pre-allocate datasets when possible for performance
 - Use memory backend for small test datasets
 - Store q_vectors in original lab frame for traceability
-- ASU mapping uses CCTBX space group operations
+- ASU mapping uses CCTBX symmetry operations for robust space group handling
 - Voxel indices calculated using GlobalVoxelGrid methods
 - Support both incremental addition and batch processing

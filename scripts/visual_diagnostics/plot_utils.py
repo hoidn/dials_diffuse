@@ -466,6 +466,7 @@ def plot_3d_grid_slice(
     # Save plot
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
     logger.info(f"Saved 3D grid slice plot to {output_path}")
 
     return fig
@@ -497,7 +498,7 @@ def plot_radial_average(
     valid_mask = np.isfinite(q_magnitudes) & np.isfinite(intensities)
     q_valid = q_magnitudes[valid_mask]
     I_valid = intensities[valid_mask]
-    
+
     if sigmas is not None:
         sigmas_valid = sigmas[valid_mask]
     else:
@@ -508,14 +509,17 @@ def plot_radial_average(
         fig, ax = plt.subplots(figsize=(10, 6))
         ax.text(0.5, 0.5, "No valid data", ha="center", va="center")
         ax.set_title(title)
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(output_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        logger.info(f"Saved radial average plot (no data) to {output_path}")
         return fig
 
     # Create bins
     q_min, q_max = np.min(q_valid), np.max(q_valid)
     if q_min == q_max:
         q_max = q_min + 1e-6  # Avoid zero width
-    
+
     bin_edges = np.linspace(q_min, q_max, num_bins + 1)
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
 
@@ -525,13 +529,13 @@ def plot_radial_average(
 
     mean_intensities = []
     std_intensities = []
-    
+
     for i in range(num_bins):
         mask = bin_indices == i
         if np.any(mask):
             I_bin = I_valid[mask]
             mean_intensities.append(np.mean(I_bin))
-            
+
             if sigmas_valid is not None:
                 # Propagate uncertainties: std error of mean
                 weights = 1.0 / (sigmas_valid[mask] ** 2)
@@ -571,6 +575,7 @@ def plot_radial_average(
     # Save plot
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
     logger.info(f"Saved radial average plot to {output_path}")
 
     return fig
@@ -610,14 +615,23 @@ def plot_parameter_vs_index(
     # Add statistics
     mean_val = np.mean(param_values)
     std_val = np.std(param_values)
-    ax.axhline(mean_val, color="red", linestyle="--", alpha=0.7, label=f"Mean: {mean_val:.3f}")
-    ax.axhline(mean_val + std_val, color="orange", linestyle=":", alpha=0.7, label=f"±1σ: {std_val:.3f}")
+    ax.axhline(
+        mean_val, color="red", linestyle="--", alpha=0.7, label=f"Mean: {mean_val:.3f}"
+    )
+    ax.axhline(
+        mean_val + std_val,
+        color="orange",
+        linestyle=":",
+        alpha=0.7,
+        label=f"±1σ: {std_val:.3f}",
+    )
     ax.axhline(mean_val - std_val, color="orange", linestyle=":", alpha=0.7)
     ax.legend()
 
     # Save plot
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
     logger.info(f"Saved parameter vs index plot to {output_path}")
 
     return fig
@@ -649,7 +663,7 @@ def plot_smoother_curve(
     """
     # Generate evaluation points
     x_eval = np.linspace(x_range[0], x_range[1], num_points)
-    
+
     try:
         y_eval = smoother_eval_func(x_eval)
     except Exception as e:
@@ -658,7 +672,10 @@ def plot_smoother_curve(
         fig, ax = plt.subplots(figsize=(10, 6))
         ax.text(0.5, 0.5, f"Failed to evaluate smoother: {e}", ha="center", va="center")
         ax.set_title(title)
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(output_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        logger.info(f"Saved smoother curve plot (error) to {output_path}")
         return fig
 
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -687,6 +704,7 @@ def plot_smoother_curve(
     # Save plot
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
     logger.info(f"Saved smoother curve plot to {output_path}")
 
     return fig

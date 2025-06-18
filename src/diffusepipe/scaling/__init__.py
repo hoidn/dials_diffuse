@@ -12,7 +12,7 @@ from .components.per_still_multiplier import PerStillMultiplierComponent
 from .components.resolution_smoother import ResolutionSmootherComponent
 
 __all__ = [
-    'DiffuseScalingModel',
-    'PerStillMultiplierComponent', 
-    'ResolutionSmootherComponent'
+    "DiffuseScalingModel",
+    "PerStillMultiplierComponent",
+    "ResolutionSmootherComponent",
 ]

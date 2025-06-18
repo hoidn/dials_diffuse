@@ -1,126 +1,91 @@
-**Guideline: Drafting Implementation Checklists**
+# Guide to Writing Agent Implementation Checklists
 
-**1. Purpose of this Guideline**
+### 1. Purpose & Philosophy
 
-This document provides a standard template and conventions for creating detailed implementation checklists. These checklists are intended to guide an AI agent (or a human developer) through the systematic implementation of project phases and modules, ensuring all planned tasks, context priming, and progress tracking are consistently handled.
+This document provides a template and guidelines for creating comprehensive, documentation-driven implementation checklists. The goal is to ensure that all development work is systematically planned, executed, and verified against its specification *before* and *after* implementation.
 
-**2. Checklist Structure**
+**Core Philosophy: The IDL is the Contract.**
+-   **Specification First:** All implementation tasks must begin with a thorough understanding of the relevant high-level plans (`plan.md`, architecture docs) and the specific component contracts defined in **Interface Definition Language (IDL)** files (`*_IDL.md`).
+-   **Traceability:** Every implementation step should be traceable back to a requirement in the IDL or a design decision in the plan.
+-   **Verification:** The final implementation must be explicitly verified against the IDL contract.
 
-Each checklist should adhere to the following overall structure:
+Using this structured approach prevents architectural drift, reduces bugs, and ensures the final code is a faithful and correct implementation of its design.
+
+### 2. Implementation Checklist Template
+
+Copy and use this template for every new implementation task.
 
 ```markdown
-**Agent Task: [Brief, High-Level Task Title, e.g., Implement Phase X of Y Plan]**
+### **Agent Implementation Checklist: [Task Title]**
 
-**Overall Goal for Agent ([Phase/Task Name]):** [One or two sentences describing the primary objective of this specific checklist/phase.]
+**Overall Goal:** [A brief, one-sentence summary of the task's primary objective.]
 
-<checklist instructions>
-**Checklist Usage Instructions for Agent:**
+**Instructions:**
+1.  Copy this entire checklist into your working memory.
+2.  Update the `State` for each item as you progress: `[ ]` (Open) -> `[P]` (In Progress) -> `[D]` (Done).
+3.  Follow the API guidance in the `How/Why & API Guidance` column.
 
-1.  **Copy this entire checklist into your working memory or a dedicated scratchpad area.**
-2.  **Context Priming:** Before starting a new major section (e.g., Phase, Module), carefully read all "Context Priming" items for that section.
-3.  **Sequential Execution:** Address checklist items in the order presented, unless an item explicitly states it can be done in parallel or depends on a later item being drafted first (e.g., an IDL definition).
-4.  **Update State:** As you work on an item, change its state field:
-    *   `[ ] Open` -> `[P] In Progress` when you start.
-    *   `[P] In Progress` -> `[D] Done` when completed successfully.
-    *   `[P] In Progress` -> `[B] Blocked` if you encounter a blocker. Add a note explaining the blocker in the "Details/Notes/Path" column.
-5.  **Record Details (in the "Details/Notes/Path" column):**
-    *   If a step requires creating or modifying a file, add the **full relative path** to that file (e.g., `src/package/module.py`).
-    *   If a significant design decision or clarification is made during the task, note it briefly.
-    *   If a task is broken down into further sub-tasks not originally listed, add them as indented items with their own Item ID and State.
-    *   For "IDL Definition/Review" tasks, summarize the key interface aspects (Inputs, Outputs, Behavior, Errors) or reference the document where these are detailed.
-6.  **Iterative Review:** Periodically re-read completed sections of the checklist and your notes to ensure continued alignment with the overall plan and previous decisions.
-7.  **Save State:** If work needs to be paused, ensure this checklist with its current progress and notes is saved so work can be resumed effectively.
-</checklist instructions>
-
----
-
-**[Phase/Major Section Title, e.g., Phase X: Section Title]**
-
-| Item ID | Task Description                                     | State | Details/Notes/Path                                     |
-| :------ | :--------------------------------------------------- | :---- | :----------------------------------------------------- |
-| **X.A** | **Context Priming ([Phase/Section Name])**           | `[ ]` |                                                        |
-| X.A.1   | [Specific document/section to review for context]    | `[ ]` | [Optional: Note on what to focus on during review]     |
-| X.A.2   | [Another document/section or concept to understand]  | `[ ]` |                                                        |
-| ...     |                                                      |       |                                                        |
-| X.A.N   | Understand Goal: [Restate goal for this specific section] | `[ ]` |                                                        |
-|         |                                                      |       |                                                        |
-| **X.B** | **[First Major Group of Tasks/Module within Phase]** | `[ ]` |                                                        |
-| **X.B.idl**| **Define/Review Conceptual IDL for [Component/Module]** | `[ ]` | **Purpose:** [Brief purpose of this IDL step]. <br>Input: [Key inputs]. <br>Output: [Key outputs]. <br>Behavior: [Core behavior summary]. <br>Errors: [Key error conditions]. <br>[Optional: Path to where IDL thoughts are captured, e.g., comments in the target Python file, or a link to a formal IDL doc if it exists.] |
-| X.B.1   | [Specific implementation task derived from plan]     | `[ ]` | [Note expected file path, key decisions, or dependencies] |
-| X.B.1.a |   [Sub-task if needed]                               | `[ ]` |                                                        |
-| X.B.1.b |   [Another sub-task]                                 | `[ ]` |                                                        |
-| X.B.2   | [Another specific implementation task]               | `[ ]` |                                                        |
-| ...     |                                                      |       |                                                        |
-| X.B.T   | **Unit/Integration Tests for [Component/Module X.B]**| `[ ]` | Path: `tests/path/to/test_module_xb.py`                |
-| X.B.T.1 |   Test Case: `test_scenario_one`                     | `[ ]` |                                                        |
-|         |     - Setup: [Brief setup description]               | `[ ]` | [Note any specific test data files used]               |
-|         |     - Execution: [How the component is called]       | `[ ]` |                                                        |
-|         |     - Verification: [Key assertions]                 | `[ ]` |                                                        |
-| ...     |                                                      |       |                                                        |
-|         |                                                      |       |                                                        |
-| **X.C** | **[Second Major Group of Tasks/Module within Phase]**| `[ ]` |                                                        |
-| ...     | *(Repeat structure as for X.B)*                      |       |                                                        |
-|         |                                                      |       |                                                        |
-| **X.Z** | **[Phase/Section] Review & Next Steps**              | `[ ]` |                                                        |
-| X.Z.1   | Self-Review: All [Phase/Section] items addressed?    | `[ ]` | [Confirm IDLs defined/reviewed, code implemented, tests written] |
-| X.Z.2   | Context Refresh: Re-read [relevant plan sections for next phase]. | `[ ]` |                                                        |
-| X.Z.3   | Decision: Proceed to [Next Phase/Section] Checklist. | `[ ]` |                                                        |
-
----
+| ID | Task Description | State | How/Why & API Guidance |
+| :--- | :--- | :--- | :--- |
+| **Phase 0: Preparation & Understanding (Documentation-Driven Planning)** |
+| 0.A | **Review High-Level Context** | `[ ]` | **Why:** To understand the task's purpose and constraints within the project. <br> **Files:** `plan.md`, `docs/ARCHITECTURE/overview.md`, relevant `docs/LESSONS_LEARNED.md`. |
+| 0.B | **Identify and Review IDL Contract(s)** | `[ ]` | **Why:** The IDL is the primary specification. This step is mandatory. <br> **Files:** [List all relevant `*_IDL.md` files here]. |
+| 0.C | **Summarize IDL Contract** | `[ ]` | **Why:** To confirm understanding of the component's public interface and required behavior. <br> **Summary:** <br> - **Component(s):** [List class/module names] <br> - **Inputs:** [List key inputs/parameters] <br> - **Outputs:** [List key return values/types] <br> - **Behavior:** [Summarize the core logic described in the IDL `Behavior` sections] <br> - **Errors:** [List key error conditions from `@raises_error`] |
+| 0.D | **Review Implementation Rules** | `[ ]` | **Why:** To ensure the implementation will adhere to project-wide standards. <br> **Files:** `docs/02_IMPLEMENTATION_RULES.md`, `docs/03_PROJECT_RULES.md`. |
+| 0.E | **Outline Testing Strategy** | `[ ]` | **Why:** To plan for verification from the start. <br> **Strategy:** [e.g., "Integration test for Component A using a real Component B. Mock external API X. Add performance test for method Y."]. |
+| **Phase 1: Implementation & Core Testing (Contract Fulfillment)** |
+| 1.A | **Create/Locate Files** | `[ ]` | **Path(s):** [List all source and test files to be created/modified]. |
+| 1.B | **Implement [Feature/Method 1]** | `[ ]` | **Why:** [Connect this feature to a specific part of the IDL contract]. <br> **How:** [Describe implementation steps]. <br> **API:** [Reference specific internal or external APIs, e.g., `dials.scaling.model.ScalingModelBase`]. |
+| 1.C | **Write Test for [Feature/Method 1]** | `[ ]` | **Why:** To verify the implementation against the IDL's postconditions and error conditions. |
+| 1.D | **Implement [Feature/Method 2]** | `[ ]` | **Why:** ... |
+| ... | ... | `[ ]` | ... |
+| **Phase 2: Finalization & Verification (Contract Conformance)** |
+| 2.A | **Format and Lint Code** | `[ ]` | **Why:** To ensure code style consistency. <br> **How:** Run project's standard formatting and linting tools (e.g., `make format`, `make lint`). |
+| 2.B | **Run Full Test Suite** | `[ ]` | **Why:** To catch any regressions introduced by the changes. |
+| 2.C | **Perform Final Sanity Check** | `[ ]` | **Why:** A final self-review to ensure all requirements were met. <br> **Check:** <br> 1. Does the code fulfill every aspect of the IDL contract (methods, behavior, errors)? <br> 2. Are all relevant points from `plan.md` addressed? <br> 3. Does the implementation align with `LESSONS_LEARNED.md`? |
+| 2.D | **Update IDL & Documentation** | `[ ]` | **Why:** If the implementation required a necessary deviation or clarification of the contract, the IDL must be updated to remain the source of truth. <br> **How:** Modify the relevant `*_IDL.md` files. Check if any other documentation (`plan.md`, etc.) needs updating. If no changes are needed, mark as done. |
 ```
 
-**3. Key Elements of a Checklist Item:**
+### 3. Guidelines for Filling Out the Checklist
 
-*   **Item ID:**
-    *   Hierarchical (e.g., `X.A.1`, `X.B.1.a`).
-    *   `X` represents the Phase number or a major section letter.
-    *   Second letter (`A`, `B`, `C`) represents a major group of tasks or a module within that phase.
-    *   Numbers (`1`, `2`, `3`) represent specific tasks.
-    *   Lowercase letters (`a`, `b`, `c`) represent sub-tasks.
-    *   Use `**.idl**` suffix for items specifically about defining/reviewing an Interface Definition (conceptual or formal).
-    *   Use `**.T**` suffix for items grouping test cases for a module.
+#### Phase 0: Preparation & Understanding
+This is the most critical phase for ensuring a documentation-driven workflow.
+-   **0.A (High-Level Context):** Always start here. A feature might be technically correct but architecturally wrong if it violates the master plan.
+-   **0.B (Identify IDLs):** Your first action is to find the specification. If one doesn't exist for the code you're modifying, your first task should be to create one by reducing the existing code to its essential contract.
+-   **0.C (Summarize Contract):** Do not skip this. This step forces you to internalize the requirements *before* writing code. Your summary should be a concise version of the IDL's `Preconditions`, `Postconditions`, `Behavior`, and `@raises_error` tags.
+-   **0.E (Testing Strategy):** This ensures testability is considered part of the design, not an afterthought.
 
-*   **Task Description:**
-    *   Clear, concise, and actionable.
-    *   Start with a verb (e.g., "Implement...", "Define...", "Review...", "Test...").
-    *   Derived directly from the project plan (e.g., `plan.md`).
-    *   If it's a high-level task, break it down into sub-tasks.
-    *   For "IDL Definition/Review" tasks, use the "Details/Notes/Path" column to sketch out:
-        *   A brief **Purpose** statement for the interface.
-        *   Key **Input(s)**.
-        *   Key **Output(s)**.
-        *   A summary of its core **Behavior**.
-        *   Anticipated **Error(s)** or exceptional conditions.
-        *   Optionally, the intended file path for the Python implementation of this interface.
+#### Phase 1: Implementation
+-   Break the task into the smallest logical steps possible. Each "feature" should ideally correspond to implementing a single method or a small, related group of methods from the IDL.
+-   Explicitly state the "Why" for each implementation step, linking it back to the IDL (e.g., "Why: To fulfill the `calculate_scales_and_derivatives` contract defined in the IDL.").
+-   Use the "API" section to note the specific functions, classes, or methods from libraries (`DIALS`, `CCTBX`, `NumPy`) or internal modules that you plan to use. This is where you cross-reference the `libdocs/` or other API documentation.
 
-*   **State:**
-    *   A single field indicating current progress.
-    *   Use predefined state markers:
-        *   `[ ]` (Open / To Do)
-        *   `[P]` (In Progress)
-        *   `[D]` (Done / Completed)
-        *   `[B]` (Blocked)
+#### Phase 2: Finalization & Verification
+-   **2.C (Sanity Check):** This is a crucial final review. Reread the IDL and the plan one last time and compare it against your finished code. It's the last chance to catch deviations from the specification.
+-   **2.D (Update Documentation):** This is the step that ensures our documentation remains alive and accurate. If you had to change the public-facing behavior of a component, its IDL **must** be updated. If the change has broader architectural implications, `plan.md` or an ADR might need an update.
 
-*   **Details/Notes/Path:**
-    *   **Crucial for context and tracking.**
-    *   **File Paths:** For tasks involving file creation/modification, list the full relative path to the primary file(s) involved.
-    *   **Decisions:** Briefly note any significant design choices, clarifications, or assumptions made while performing the task if they deviate from or elaborate on the plan.
-    *   **Blockers:** If State is `[B]`, explain the blocker here.
-    *   **References:** Links to specific sections of other documents if helpful.
-    *   For IDL tasks, this column should contain the sketch of the interface as described above.
+### 4. Example Filled-Out Checklist (For Fixing `ResolutionSmootherComponent`)
 
-**4. Content Guidelines:**
+Here's how the template would be applied to the first fix identified in the review:
 
-*   **Granularity:** Aim for tasks that are manageable units of work. A single task shouldn't be overly broad (e.g., "Implement entire module"). Break down larger tasks from the plan into smaller checklist items.
-*   **IDL-First:** For any new component, class, or significant function, include an "IDL Definition/Review" item *before* its corresponding Python implementation item(s). This reinforces thinking about the interface first.
-*   **Testing:** Include specific groups of test cases for each implemented module or significant piece of functionality. Test descriptions should cover setup, execution, and verification.
-*   **Context Priming:** Each major section (Phase or significant Module group) should start with "Context Priming" tasks to ensure the agent re-orients itself with relevant plans and documents.
-*   **Review and Next Steps:** Each major section should end with a review item and a clear pointer to the next steps or checklist.
-*   **Consistency with `plan.md`:** Task descriptions should closely mirror the language and intent of the corresponding sections in `plan.md` or other planning documents.
+#### **Agent Implementation Checklist: Fix `ResolutionSmootherComponent`**
 
-**5. Formatting:**
+**Overall Goal:** Refactor the `ResolutionSmootherComponent` to correctly wrap the DIALS `GaussianSmoother1D` and provide analytical derivatives, ensuring it complies with its IDL contract.
 
-*   Use Markdown tables for the main checklist structure.
-*   Use bolding for section titles (e.g., `**X.A Context Priming...**`) and for emphasizing the "IDL Definition/Review" task type.
-*   Use fixed-width font for `[ ]`, `[P]`, `[D]`, `[B]` states for visual clarity.
-*   Use consistent indentation for sub-tasks if not using the table format for them (though the table format with hierarchical IDs is preferred).
+| ID | Task Description | State | How/Why & API Guidance |
+| :--- | :--- | :--- | :--- |
+| **Phase 0: Preparation & Understanding** |
+| 0.A | **Review High-Level Context** | `[D]` | **Why:** To understand the role of scaling components in the plan. <br> **Files:** `plan.md` (Module 3.S.3). |
+| 0.B | **Identify and Review IDL Contract(s)** | `[D]` | **Why:** To understand the required interface and behavior. <br> **Files:** `src/diffusepipe/scaling/diffuse_scaling_model_IDL.md`. |
+| 0.C | **Summarize IDL Contract** | `[D]` | **Summary:** <br> - **Component:** `ResolutionSmootherComponent` <br> - **Inputs:** `active_parameter_manager`, `n_control_points`, `resolution_range`. <br> - **Outputs:** `(scales, derivatives)` tuple of `flex.double` arrays. <br> - **Behavior:** Provides a smooth, resolution-dependent multiplicative scale factor. <br> - **Errors:** `ParameterLimitExceeded`. |
+| 0.D | **Review Implementation Rules** | `[D]` | **Why:** To check for rules on DIALS integration. <br> **Files:** `docs/02_IMPLEMENTATION_RULES.md`, `docs/06_DIALS_DEBUGGING_GUIDE.md`. |
+| 0.E | **Outline Testing Strategy** | `[D]` | **Strategy:** Update existing tests. Verify the shape and content of the returned `derivatives` array to ensure it's not a dummy placeholder. |
+| **Phase 1: Implementation & Core Testing** |
+| 1.A | **Update `__init__`** | `[D]` | **Why:** To decouple from the parameter manager. <br> **How:** Change signature to `__init__(self, n_control_points, resolution_range)`. Instantiate `GaussianSmoother1D` and initialize `self.parameters`. <br> **Path:** `src/diffusepipe/scaling/components/resolution_smoother.py`. |
+| 1.B | **Implement `calculate_scales_and_derivatives`** | `[D]` | **Why:** To provide correct analytical derivatives. <br> **How:** Use `self._smoother.value_weight(q_locations, self.parameters)` to get both `scales` and `derivatives`. <br> **API:** `libdocs/dials/dials_scaling.md` (D.0, Example 7). <br> **Path:** `src/diffusepipe/scaling/components/resolution_smoother.py`. |
+| 1.C | **Update `get_scale_for_q`** | `[D]` | **Why:** To use the correct evaluation method. <br> **How:** Call `self._smoother.value_weight()` to get the scale. <br> **Path:** `src/diffusepipe/scaling/components/resolution_smoother.py`. |
+| **Phase 2: Finalization & Verification** |
+| 2.A | **Format and Lint Code** | `[D]` | **How:** Ran `make format` and `make lint`. |
+| 2.B | **Run Full Test Suite** | `[D]` | **Why:** To check for regressions. All tests passed. |
+| 2.C | **Perform Final Sanity Check** | `[D]` | **Check:** The new implementation correctly provides scales and a non-dummy derivatives matrix, fulfilling the IDL contract. |
+| 2.D | **Update IDL & Documentation** | `[D]` | **Why:** To reflect the improved constructor. <br> **How:** Changed `__init__` signature in `src/diffusepipe/scaling/diffuse_scaling_model_IDL.md` to remove `active_parameter_manager`. |

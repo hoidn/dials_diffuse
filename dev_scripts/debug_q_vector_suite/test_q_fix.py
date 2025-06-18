@@ -6,7 +6,6 @@ Quick test of the Q-vector calculation fixes.
 import sys
 import logging
 from pathlib import Path
-import numpy as np
 
 # Add project src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -48,7 +47,7 @@ def test_q_vector_fixes():
 
     if outcome.output_artifacts:
         validation_metrics = outcome.output_artifacts.get("validation_metrics", {})
-        print(f"\nValidation Results:")
+        print("\nValidation Results:")
         print(
             f"  Q-consistency passed: {validation_metrics.get('q_consistency_passed')}"
         )

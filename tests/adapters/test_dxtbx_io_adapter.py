@@ -1,7 +1,7 @@
 """Tests for DXTBXIOAdapter."""
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from pathlib import Path
 
 from diffusepipe.adapters.dxtbx_io_adapter import DXTBXIOAdapter
@@ -178,7 +178,9 @@ class TestDXTBXIOAdapter:
             adapter.save_experiment_list(mock_experiments, "/path/to/file.expt")
 
     @patch("diffusepipe.adapters.dxtbx_io_adapter.Path.mkdir")
-    def test_save_experiment_list_import_error(self, mock_mkdir, adapter, mock_experiments):
+    def test_save_experiment_list_import_error(
+        self, mock_mkdir, adapter, mock_experiments
+    ):
         """Test experiment saving with import error."""
         with patch(
             "diffusepipe.adapters.dxtbx_io_adapter.ExperimentListDumper",

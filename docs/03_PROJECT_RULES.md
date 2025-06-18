@@ -91,6 +91,13 @@ DiffusePipe/
     *   Require at least one approval (or as per team policy).
     *   Ensure all automated checks (CI tests, linting) pass before merging.
     *   Prefer squash merging or rebase merging for a cleaner `develop`/`main` history, if agreed by the team.
+    *   **Performance Review Requirements:**
+        *   For PRs containing computational code (array processing, matrix operations):
+            *   Include performance benchmark results in PR description
+            *   Document algorithmic complexity (O(n) vs O(1))
+            *   Justify any Python loops over NumPy arrays
+            *   Show timing comparisons if replacing existing implementation
+        *   Reviewers must check for vectorization opportunities in array processing code
 *   **Rebasing:** Prefer rebasing feature branches onto `develop` before creating a PR to maintain a linear history and simplify merges. `git pull --rebase` for updating local branches.
 
 **5. Architecture Decision Records (ADRs)**

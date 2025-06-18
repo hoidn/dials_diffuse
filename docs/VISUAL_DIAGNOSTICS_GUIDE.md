@@ -805,27 +805,44 @@ python run_phase3_e2e_visual_check.py \
 
 ```
 output-base-dir/
-├── phase1_image1/
-│   ├── indexed_refined_detector.expt
-│   ├── indexed_refined_detector.refl
-│   ├── global_pixel_mask.pickle
-│   ├── bragg_mask.pickle
-│   └── total_diffuse_mask.pickle
-├── phase1_image2/
-│   └── ... (similar structure)
-├── phase3_outputs/
+├── phase3_e2e_outputs/
+│   ├── sequence_processing/
+│   │   ├── indexed_refined_detector.expt
+│   │   ├── indexed_refined_detector.refl
+│   │   └── global_pixel_mask.pickle
+│   ├── still_000_image1/
+│   │   ├── bragg_mask.pickle
+│   │   ├── total_diffuse_mask.pickle
+│   │   ├── corrected_diffuse_pixel_data.npz
+│   │   └── phase2_diagnostics/
+│   │       ├── diffuse_pixel_overlay.png
+│   │       ├── q_projection_qx_qy.png
+│   │       ├── intensity_histogram.png
+│   │       └── extraction_diagnostics_summary.txt
+│   ├── still_001_image2/
+│   │   ├── bragg_mask.pickle
+│   │   ├── total_diffuse_mask.pickle
+│   │   ├── corrected_diffuse_pixel_data.npz
+│   │   └── phase2_diagnostics/
+│   │       └── ... (similar Phase 2 diagnostic plots)
 │   ├── global_voxel_grid_definition.json
 │   ├── refined_scaling_model_params.json
 │   ├── voxel_data_relative.npz
-│   └── diagnostics/
-│       ├── grid_summary.txt
-│       ├── voxel_occupancy_slice_L0.png
-│       ├── scaling_params_b_i.png
-│       ├── merged_intensity_slice_L0.png
-│       └── phase3_diagnostics_summary.txt
-├── intermediate_outputs_manifest.json (if --save-intermediate-phase-outputs)
-└── e2e_phase3_visual_check.log
+│   ├── phase3_diagnostics/
+│   │   ├── grid_summary.txt
+│   │   ├── voxel_occupancy_slice_L0.png
+│   │   ├── scaling_params_b_i.png
+│   │   ├── merged_intensity_slice_L0.png
+│   │   └── phase3_diagnostics_summary.txt
+│   ├── intermediate_outputs_manifest.json (if --save-intermediate-phase-outputs)
+│   └── phase3_e2e_visual_check.log
 ```
+
+**Two-Tiered Diagnostic Output**: The script now produces comprehensive diagnostic visualization at two levels:
+
+1. **Per-Image Phase 2 Diagnostics** (`phase2_diagnostics/` subdirectories): Detailed extraction validation plots for each individual image, including pixel overlays, Q-space projections, and intensity distributions. These help verify the correctness of diffuse data extraction and corrections for each CBF file.
+
+2. **Final Phase 3 Diagnostics** (`phase3_diagnostics/` directory): Merged voxel data visualization showing the final 3D reciprocal space map, voxel occupancy analysis, scaling parameter validation, and overall pipeline quality metrics. These verify the correctness of the complete voxelization and merging process.
 
 ### Performance Considerations
 

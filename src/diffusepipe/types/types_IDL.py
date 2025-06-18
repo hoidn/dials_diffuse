@@ -101,13 +101,16 @@ class ExtractionConfig(BaseModel):
         description="If true, enables verbose logging output during extraction"
     )
     air_temperature_k: Optional[float] = Field(
-        293.15, description="Air temperature in Kelvin for air attenuation correction (default: 20°C)"
+        293.15,
+        description="Air temperature in Kelvin for air attenuation correction (default: 20°C)",
     )
     air_pressure_atm: Optional[float] = Field(
-        1.0, description="Air pressure in atmospheres for air attenuation correction (default: 1 atm)"
+        1.0,
+        description="Air pressure in atmospheres for air attenuation correction (default: 1 atm)",
     )
     save_original_pixel_coordinates: bool = Field(
-        True, description="If true, saves original panel IDs and pixel coordinates in NPZ output for visual diagnostics"
+        True,
+        description="If true, saves original panel IDs and pixel coordinates in NPZ output for visual diagnostics",
     )
     external_pdb_path: Optional[str] = Field(
         None, description="Path to an external PDB file used for consistency checks"
@@ -162,7 +165,7 @@ class StillsPipelineConfig(BaseModel):
     extraction_config: ExtractionConfig
     relative_scaling_config: Optional[RelativeScalingConfig] = Field(
         None,
-        description="Configuration for Phase 3 relative scaling. If None, Phase 3 is skipped"
+        description="Configuration for Phase 3 relative scaling. If None, Phase 3 is skipped",
     )
     run_consistency_checker: bool = Field(
         description="If true, ConsistencyChecker is run after successful extraction"

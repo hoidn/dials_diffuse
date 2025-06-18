@@ -22,7 +22,6 @@ try:
     from diffusepipe.crystallography.still_processing_and_validation import (
         ModelValidator,
     )
-    from diffusepipe.types.types_IDL import ExtractionConfig
 
     print("✓ Imports successful")
 

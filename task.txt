@@ -1,5 +1,5 @@
-We will be improving the phase 3 visual diagnostic check, which currently incorrectly uses mocks. We will also update the proj conventions to prevent similar errors in future development. 
-relevant context might include:
-- code
-- docs 
-- phase 2 e2e visual check script (as an example)
+We will be:
+- reviewing the scaling approach specified in plan.md
+- revieing the idls for consistency and correctness wrt to the scaling approach
+- reviewing the code implementation for consistency and correctness wrt to the scaling approach 
+- analyzing any issues identified in the above and proposing fixes

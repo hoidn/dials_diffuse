@@ -98,7 +98,6 @@ class BraggMaskGenerator:
 
             # Import DIALS components (delayed import)
             from dials.array_family import flex
-            from dials.algorithms.shoebox import MaskCode
 
             # Initialize per-panel masks to False (no Bragg regions initially)
             panel_masks = []

@@ -561,9 +561,7 @@ def generate_scaling_parameter_plots(
 
     # Extract per-still scales
     still_ids = list(refined_params.keys())
-    scales = [
-        params["multiplicative_scale"] for params in refined_params.values()
-    ]
+    scales = [params["multiplicative_scale"] for params in refined_params.values()]
     still_indices = range(len(still_ids))
 
     # Plot per-still scales
@@ -721,6 +719,17 @@ def generate_merged_voxel_plots(
         (0, ndiv_h // 2, "K-L", "K", "L", "merged_intensity_slice_H0.png"),
     ]
 
+    # Create log normalization for intensity plots
+    from matplotlib.colors import LogNorm
+
+    positive_intensities = intensities[intensities > 0]
+    if len(positive_intensities) > 0:
+        log_norm = LogNorm(
+            vmin=positive_intensities.min(), vmax=positive_intensities.max()
+        )
+    else:
+        log_norm = None
+
     for (
         slice_dim,
         slice_idx,
@@ -736,7 +745,7 @@ def generate_merged_voxel_plots(
             title=f"Merged Intensity - {title} Slice (Log Scale)",
             output_path=str(output_dir / filename),
             cmap="viridis",
-            norm="log",
+            norm=log_norm,
             xlabel=xlabel,
             ylabel=ylabel,
             aspect="auto",
@@ -928,10 +937,7 @@ def generate_comprehensive_summary(
 
     # Scaling model summary
     refined_params = scaling_params["refined_parameters"]
-    scales = [
-        params["multiplicative_scale"]
-        for params in refined_params.values()
-    ]
+    scales = [params["multiplicative_scale"] for params in refined_params.values()]
 
     summary_text.append("Relative Scaling:")
     summary_text.append(f"  Number of Stills: {len(refined_params)}")

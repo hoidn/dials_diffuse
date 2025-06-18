@@ -166,26 +166,24 @@ class DIALSSequenceProcessAdapter:
 
         return parameters
 
-    def process_still(
+    def process_sequence(
         self,
-        image_path: str,
+        image_paths: List[str],
         config: DIALSStillsProcessConfig,
-        base_expt_path: Optional[str] = None,
         output_dir_final: Optional[str] = None,
     ) -> Tuple[Optional[object], Optional[object], bool, str]:
         """
-        Process a still/sequence image using DIALS sequential workflow.
+        Process a sequence of images using DIALS sequential workflow as a single cohesive dataset.
 
         Args:
-            image_path: Path to the CBF image file to process
+            image_paths: List of paths to CBF image files to process as a sequence
             config: Configuration parameters for DIALS processing
-            base_expt_path: Optional path to base experiment file for geometry (ignored)
             output_dir_final: Optional path to save final output files with consistent naming
 
         Returns:
             Tuple containing:
-            - Experiment object (or None if failed)
-            - Reflection table object (or None if failed)
+            - ExperimentList object with single Experiment containing scan-varying model (or None if failed)
+            - Reflection table object with reflections from all images (or None if failed)
             - Success boolean
             - Log messages string
 
@@ -198,8 +196,12 @@ class DIALSSequenceProcessAdapter:
 
         try:
             # Validate inputs
-            if not Path(image_path).exists():
-                raise ConfigurationError(f"Image file does not exist: {image_path}")
+            if not image_paths:
+                raise ConfigurationError("Image paths list cannot be empty")
+
+            for image_path in image_paths:
+                if not Path(image_path).exists():
+                    raise ConfigurationError(f"Image file does not exist: {image_path}")
 
             # Use temporary directory for processing
             with tempfile.TemporaryDirectory() as temp_dir:
@@ -207,7 +209,9 @@ class DIALSSequenceProcessAdapter:
                 original_cwd = Path.cwd()
 
                 # Convert to absolute paths before changing directories
-                abs_image_path = Path(image_path).resolve()
+                abs_image_paths = [
+                    Path(image_path).resolve() for image_path in image_paths
+                ]
                 abs_output_dir_final = (
                     Path(output_dir_final).resolve() if output_dir_final else None
                 )
@@ -218,10 +222,14 @@ class DIALSSequenceProcessAdapter:
 
                     os.chdir(temp_path)
 
-                    # Step 1: Import
-                    logger.info("Step 1: Running dials.import")
-                    self._run_dials_import(str(abs_image_path))
-                    log_messages.append("Completed dials.import")
+                    # Step 1: Import sequence
+                    logger.info(
+                        f"Step 1: Running dials.import on {len(abs_image_paths)} images"
+                    )
+                    self._run_dials_import_sequence(abs_image_paths)
+                    log_messages.append(
+                        f"Completed dials.import for {len(abs_image_paths)} images"
+                    )
 
                     if not Path("imported.expt").exists():
                         raise DIALSError("dials.import failed to create imported.expt")
@@ -236,7 +244,7 @@ class DIALSSequenceProcessAdapter:
                             "dials.find_spots failed to create strong.refl"
                         )
 
-                    # Step 3: Index
+                    # Step 3: Index sequence
                     logger.info("Step 3: Running dials.index")
                     self._run_dials_index(config)
                     log_messages.append("Completed dials.index")
@@ -284,6 +292,37 @@ class DIALSSequenceProcessAdapter:
                 raise
             else:
                 raise DIALSError(error_msg) from e
+
+    def _run_dials_import_sequence(
+        self, image_paths: List[Path]
+    ) -> subprocess.CompletedProcess:
+        """Run dials.import step for a sequence of images using PHIL files."""
+        # For import, we mainly need to set the output file
+        runtime_overrides = {
+            "output.experiments": "imported.expt",
+            "output.log": "dials.import.log",
+        }
+
+        # Use empty config since import step doesn't typically need config overrides
+        empty_config = DIALSStillsProcessConfig()
+
+        phil_params = self._load_and_merge_phil_parameters(
+            "import", empty_config, runtime_overrides
+        )
+
+        # Build command with all image paths - DIALS will interpret this as a sequence
+        cmd = ["dials.import"] + [str(path) for path in image_paths] + phil_params
+
+        logger.info(
+            f"Running dials.import with {len(image_paths)} images and parameters: {phil_params}"
+        )
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            raise DIALSError(f"dials.import failed: {result.stderr}")
+
+        logger.debug(f"dials.import stdout: {result.stdout}")
+        return result
 
     def _run_dials_import(self, image_path: str) -> subprocess.CompletedProcess:
         """Run dials.import step using PHIL files."""
@@ -358,8 +397,9 @@ class DIALSSequenceProcessAdapter:
             runtime_overrides["indexing.known_symmetry.unit_cell"] = (
                 config.known_unit_cell
             )
-            # Fix unit cell during refinement to preserve PDB reference
-            runtime_overrides["refinement.parameterisation.crystal.fix"] = "cell"
+
+        # Fix unit cell during refinement to preserve PDB reference
+        runtime_overrides["refinement.parameterisation.crystal.fix"] = "cell"
 
         phil_params = self._load_and_merge_phil_parameters(
             "index", config, runtime_overrides
@@ -415,13 +455,11 @@ class DIALSSequenceProcessAdapter:
             if len(experiments) == 0:
                 raise DIALSError("No experiments in integrated.expt")
 
-            experiment = experiments[0]
-
             # Load reflections
             reflections = flex.reflection_table.from_file("integrated.refl")
 
             logger.info(f"Loaded experiment and {len(reflections)} reflections")
-            return experiment, reflections
+            return experiments, reflections
 
         except Exception as e:
             raise DIALSError(f"Failed to load DIALS results: {e}")

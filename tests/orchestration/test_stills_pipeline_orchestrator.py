@@ -227,7 +227,7 @@ class TestStillsPipelineOrchestrator:
                 mock_experiment,
                 mock_reflections,
                 True,  # success flag
-                "Processing successful"  # log message
+                "Processing successful",  # log message
             )
 
             # Mock data extractor

@@ -211,7 +211,6 @@ diffuse_references = {
 
 ```python
 def __init__(self,
-            active_parameter_manager: ActiveParameterManager,
             still_ids: list[int],
             initial_values: dict = None) -> None
 ```
@@ -221,13 +220,14 @@ def __init__(self,
 - `initial_values` if provided maps still_id to positive float
 
 **Postconditions:**
-- One parameter registered per still in parameter manager
+- Component initialized with one parameter per still
 - Initial values set (default 1.0)
+- Parameters ready for registration by parent model
 
 **Behavior:**
-- Add one parameter per still to active parameter manager
 - Initialize with unity scale or provided values
 - Set up parameter indexing for efficient access
+- Store parameters internally for later registration by parent model
 
 ### Methods
 
@@ -257,7 +257,6 @@ def calculate_scales_and_derivatives(self,
 
 ```python
 def __init__(self,
-            active_parameter_manager: ActiveParameterManager,
             n_control_points: int,
             resolution_range: tuple[float, float]) -> None
 ```

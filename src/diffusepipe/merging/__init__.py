@@ -8,7 +8,4 @@ This module provides:
 
 from .merger import DiffuseDataMerger, VoxelDataRelative
 
-__all__ = [
-    'DiffuseDataMerger',
-    'VoxelDataRelative'
-]
+__all__ = ["DiffuseDataMerger", "VoxelDataRelative"]

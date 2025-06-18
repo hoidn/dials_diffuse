@@ -46,7 +46,7 @@ def debug_q_consistency_simple():
     experiment = outcome.output_artifacts.get("experiment")
     reflections = outcome.output_artifacts.get("reflections")
 
-    print(f"\n1. Reflection table inspection:")
+    print("\n1. Reflection table inspection:")
     print(f"   Type: {type(reflections)}")
     print(f"   Length: {len(reflections)}")
 
@@ -57,13 +57,13 @@ def debug_q_consistency_simple():
         print(f"   {col}: {'✓ present' if present else '❌ missing'}")
 
     pos_cols = ["xyzcal.mm", "xyzobs.mm.value", "xyzcal.px", "xyzobs.px.value"]
-    print(f"\n2. Position columns:")
+    print("\n2. Position columns:")
     for col in pos_cols:
         present = col in reflections
         print(f"   {col}: {'✓ present' if present else '❌ missing'}")
 
     # Try to access the data
-    print(f"\n3. Trying to access data:")
+    print("\n3. Trying to access data:")
     try:
         n_total = len(reflections)
         print(f"   Total reflections: {n_total}")
@@ -73,7 +73,7 @@ def debug_q_consistency_simple():
             hkl = reflections["miller_index"][0]
             panel_id = reflections["panel"][0]
 
-            print(f"   First reflection:")
+            print("   First reflection:")
             print(f"     Miller index: {hkl}")
             print(f"     Panel: {panel_id}")
 
