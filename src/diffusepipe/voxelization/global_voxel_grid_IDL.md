@@ -28,19 +28,22 @@ def __init__(self,
 - `grid_config.ndiv_h,k,l` are positive integers
 
 **Postconditions:**
-- `crystal_avg_ref` is computed as robust average of all input crystal models
+- Stores the provided `ExperimentList`/scan-varying model for frame-specific transformations
+- `crystal_avg_ref` is computed as robust average of all input crystal models  
+- **Critical:** The average model (`A_avg_ref`) is computed **solely** for defining grid boundaries and resolution limits. This average model **must not** be used for transforming observation data.
 - HKL range covers all diffuse data within resolution limits
 - Grid subdivision parameters are stored
 - Diagnostic metrics computed for crystal model averaging quality
 
 **Behavior:**
-1. Robustly average unit cell parameters using CCTBX utilities
-2. Average U matrices using quaternion-based method for rotation matrices  
-3. Compute `A_avg_ref = U_avg_ref * B_avg_ref` setting matrix
-4. Calculate RMS Δhkl diagnostic for Bragg reflections
-5. Calculate RMS misorientation diagnostic between individual U matrices
-6. Transform all q-vectors to fractional HKL to determine grid boundaries
-7. Store grid parameters and conversion methods
+1. Store the full `experiment_list` for scan-varying crystal model access
+2. Robustly average unit cell parameters using CCTBX utilities
+3. Average U matrices using quaternion-based method for rotation matrices  
+4. Compute `A_avg_ref = U_avg_ref * B_avg_ref` setting matrix (for grid bounds only)
+5. Calculate RMS Δhkl diagnostic for Bragg reflections
+6. Calculate RMS misorientation diagnostic between individual U matrices
+7. Transform all q-vectors to fractional HKL to determine grid boundaries
+8. Store grid parameters and conversion methods
 
 **@raises_error(condition="ExcessiveMisorientation", description="Raised if the RMS misorientation between input crystal models exceeds the safety threshold (e.g., 2.0°), indicating the stills are not suitable for merging.")**
 
@@ -88,6 +91,17 @@ def get_q_vector_for_voxel_center(self, voxel_idx: int) -> scitbx.matrix.col
 **Preconditions:** `voxel_idx` is valid index within grid
 **Postconditions:** Returns lab-frame q-vector for voxel center
 **Behavior:** Transforms voxel center HKL to lab frame using `A_avg_ref`
+
+```python
+def get_A_inverse_for_frame(self, frame_index: int) -> numpy.ndarray
+```
+
+**Preconditions:** `frame_index` is a valid 0-based scan point index
+**Postconditions:** Returns 3x3 numpy array representing A^(-1) for the frame
+**Behavior:** Retrieves scan-varying crystal orientation matrix for specific frame and computes its inverse. Caches results for performance.
+
+**@raises_error(condition="FrameIndexOutOfBounds", description="Raised if frame_index exceeds the scan range")**
+**@raises_error(condition="NoScanVaryingModel", description="Raised if experiment does not contain scan-varying crystal model")**
 
 ```python
 def get_crystal_averaging_diagnostics(self) -> dict

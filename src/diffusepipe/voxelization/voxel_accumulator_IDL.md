@@ -46,7 +46,8 @@ def add_observations(self,
                     still_id: int,
                     q_vectors_lab: numpy.ndarray,
                     intensities: numpy.ndarray, 
-                    sigmas: numpy.ndarray) -> int
+                    sigmas: numpy.ndarray,
+                    frame_indices: Optional[numpy.ndarray] = None) -> int
 ```
 
 **Preconditions:**
@@ -54,18 +55,21 @@ def add_observations(self,
 - `q_vectors_lab` shape is (N, 3) - lab frame q-vectors
 - `intensities` and `sigmas` are positive
 - `still_id` is valid identifier
+- `frame_indices` shape is (N,) if provided - 0-based scan frame indices
 
 **Postconditions:**
-- Observations binned to appropriate voxels 
+- Observations binned to appropriate voxels using correct frame-specific transformations
 - ASU symmetry applied correctly
 - Returns number of observations successfully binned
 
 **Behavior:**
-1. Transform `q_vectors_lab` to fractional HKL using `global_voxel_grid.A_avg_ref.inverse()`
-2. Map fractional HKL coordinates to the asymmetric unit using `cctbx.sgtbx.space_group_info.map_to_asu`
-3. Determine voxel indices using `global_voxel_grid.hkl_to_voxel_idx()`
-4. Store `(intensity, sigma, still_id, q_lab)` for each voxel
-5. Update accumulation statistics if using Welford's algorithm
+For each observation, or for batches of observations grouped by unique `frame_index` from `frame_indices`:
+1. **Frame-Specific Transformation:** Retrieves the frame-specific `A(φ)⁻¹` via `global_voxel_grid.get_A_inverse_for_frame(frame_idx)` for sequential data, or uses static crystal model for still data
+2. **HKL Transformation:** Transforms `q_lab` to `hkl_frac` using the frame-specific `A(φ)⁻¹`: `hkl_frac = A(φ)⁻¹ * q_lab`
+3. **ASU Mapping:** Maps fractional HKL coordinates to the asymmetric unit using `cctbx.sgtbx.space_group_info.map_to_asu`
+4. **Voxel Assignment:** Determines voxel indices using `global_voxel_grid.hkl_to_voxel_idx()`
+5. **Data Storage:** Stores `(intensity, sigma, still_id, q_lab)` for each voxel
+6. **Statistics Update:** Updates accumulation statistics if using Welford's algorithm
 
 **Expected Data Format:**
 ```python

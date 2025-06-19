@@ -418,6 +418,28 @@ This array-centric approach is critical for achieving acceptable performance and
     *   **Execution:** Call the grid definition function.
     *   **Verification:** Assert that the `GlobalVoxelGrid` object has the correct reference crystal model, HKL range, and voxel divisions based on the inputs.
 
+### **Phase 3 Critical: Handling of Scan-Varying vs. Independent Stills**
+
+**This section addresses a critical distinction in Phase 3 voxelization that prevents incorrect HKL mapping errors:**
+
+**For Scan-Varying (Sequential) Data:**
+- **Key Requirement:** The full scan-varying `Experiment` object must be preserved for voxelization, not just an averaged crystal model.
+- **Critical Transform:** Each observation must use frame-specific transformation: `hkl_frac = A(φ)⁻¹ * q_lab` where `A(φ)` is the orientation matrix for the specific frame index.
+- **Role of `A_avg_ref`:** The averaged crystal model (`A_avg_ref`) computed in Module 3.S.1 is **solely** for determining HKL grid boundaries and resolution limits. It **must not** be used for transforming observation data (`q_lab -> hkl`).
+- **Physical Requirement:** Different frames from the same detector pixel must map to different HKL coordinates, consistent with crystal rotation during the scan.
+
+**For Independent Stills Data:**
+- **Standard Transform:** Use the individual still's crystal model directly: `hkl_frac = A_i⁻¹ * q_lab_i`.
+- **No Frame Variation:** Each still has a static crystal orientation for its entire exposure.
+
+**Implementation Strategy:**
+- **Data Flow:** Ensure `frame_indices` are propagated from extraction (Phase 2) through voxelization.
+- **Voxelization Logic:** 
+  - For scan-varying data: Query frame-specific `A(φ)⁻¹` for each observation before HKL transformation.
+  - For independent stills: Use the static crystal model `A_i⁻¹` for all observations from still `i`.
+
+**Performance Note:** While applying unique transformations per frame might seem computationally intensive, modern numerical libraries (e.g., NumPy) allow for efficient batching of matrix operations. The process is largely memory-bound rather than compute-bound and is not expected to be a significant performance bottleneck compared to other pipeline operations.
+
 **Module 3.S.2: Binning Corrected Diffuse Pixels into Global Voxel Grid**
 *   **Action:** Assign each corrected diffuse pixel observation from all stills to its corresponding voxel in the `GlobalVoxelGrid`, applying Laue group symmetry. Implement streamed voxel accumulation to manage memory.
 *   **Input:**

@@ -20,6 +20,8 @@ module src.diffusepipe.extraction {
         // Postconditions:
         // - If `status` in the returned `OperationOutcome` is "SUCCESS":
         //   - An NPZ file is created at `output_npz_path`. This file minimally contains 'q_vectors' (Nx3 array), 'intensities' (N array), and 'sigmas' (N array).
+        //   - If processing input that is part of a sequence (scan-varying data), **must also include 'frame_indices' (N array of 0-based integers)**, representing the DIALS scan point index for each observation. This is required for correct voxelization in Phase 3.
+        //   - If `config.save_original_pixel_coordinates` is true, also includes original pixel coordinate arrays.
         //   - If `config.plot_diagnostics` is true, diagnostic plot image files may be created (paths reported in `output_artifacts`).
         // - The returned `OperationOutcome` object details the success or failure of the operation.
         // Behavior:

@@ -707,6 +707,96 @@ phil_overrides = [
 
 **This section incorporates lessons from systematic DIALS integration failures. See `docs/LESSONS_LEARNED.md` for detailed troubleshooting case studies.**
 
+### 15.4 Testing Sequential and Scan-Varying Data Processing
+
+**Mandatory Test Requirements:** Tests **must** verify that observations from different frames, corresponding to the *same detector pixel*, are mapped to *different HKL coordinates* when using scan-varying crystal models, consistent with crystal rotation.
+
+**Required Test Scenarios:**
+
+1. **Frame-Specific Transformation Validation:**
+   ```python
+   def test_frame_specific_hkl_mapping(self):
+       """Verify same pixel maps to different HKL for different frames"""
+       # Test same detector pixel across multiple frames
+       pixel_coord = (100, 200)  # Fixed detector pixel
+       frame_indices = [0, 10, 20]  # Different rotation angles
+       
+       hkl_results = []
+       for frame_idx in frame_indices:
+           q_lab = calculate_q_for_pixel(pixel_coord, frame_idx)
+           hkl = transform_q_to_hkl(q_lab, frame_idx)
+           hkl_results.append(hkl)
+       
+       # Assert different HKL coordinates for same pixel
+       assert not np.allclose(hkl_results[0], hkl_results[1])
+       assert not np.allclose(hkl_results[1], hkl_results[2])
+   ```
+
+2. **Reciprocal Space Consistency Testing:**
+   ```python  
+   def test_reciprocal_space_point_consistency(self):
+       """Verify same reciprocal space point maps to same HKL from different frames"""
+       # Calculate frames where a specific HKL point is accessible
+       target_hkl = [1.0, 2.0, 3.0]
+       
+       accessible_frames = find_frames_for_hkl(target_hkl)
+       hkl_results = []
+       
+       for frame_idx in accessible_frames:
+           # Calculate detector position for this HKL at this frame
+           pixel_coord = calculate_pixel_for_hkl(target_hkl, frame_idx)
+           q_lab = calculate_q_for_pixel(pixel_coord, frame_idx) 
+           hkl_observed = transform_q_to_hkl(q_lab, frame_idx)
+           hkl_results.append(hkl_observed)
+       
+       # Assert same HKL coordinates for same reciprocal space point
+       for hkl_result in hkl_results:
+           assert np.allclose(hkl_result, target_hkl, rtol=1e-6)
+   ```
+
+3. **Data Flow Integration Testing:**
+   ```python
+   def test_frame_index_propagation(self):
+       """Verify frame indices propagate through extraction to voxelization"""
+       # Test with sequence data containing multiple frames
+       sequence_cbf_file = "test_data/sequence_0.1deg_increment.cbf"
+       
+       # Extract diffuse data
+       extraction_result = data_extractor.extract_from_still(
+           inputs={"cbf_image_path": sequence_cbf_file},
+           config=extraction_config
+       )
+       
+       # Verify frame_indices array is present and correct
+       npz_data = np.load(extraction_result.npz_path)
+       assert "frame_indices" in npz_data
+       assert len(npz_data["frame_indices"]) == len(npz_data["intensities"])
+       
+       # Test voxelization uses frame indices correctly
+       voxel_accumulator.add_observations(
+           still_id=1,
+           q_vectors_lab=npz_data["q_vectors"],
+           intensities=npz_data["intensities"],
+           sigmas=npz_data["sigmas"],
+           frame_indices=npz_data["frame_indices"]
+       )
+       
+       # Verify observations are binned with correct transformations
+       # (Implementation-specific verification)
+   ```
+
+**Validation Requirements:**
+- Tests must distinguish between still image processing (static orientation) and sequence processing (scan-varying orientation)
+- Integration tests must verify entire data flow from extraction through voxelization
+- Performance tests should confirm frame-specific transformations don't create unacceptable bottlenecks
+
+**Error Condition Testing:**
+- Test missing frame_indices for sequence data
+- Test frame index out of bounds conditions  
+- Test mixed still/sequence data handling
+
+**This section ensures correct handling of the pixel-to-voxel mapping that was identified as a critical error in sequential data processing. See `docs/LESSONS_LEARNED.md` for the complete case study.**
+
 **16. Service/Plugin Registration and Naming (If Applicable)**
 
 *   **Naming Constraints:** If registering callables (tools, plugins, services) that will be exposed to external systems (e.g., LLMs, other APIs), ensure their names conform to any constraints imposed by those external systems (e.g., regex for valid characters, length limits).
